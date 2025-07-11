@@ -1,0 +1,27 @@
+{
+    "workbench.colorTheme": "Default Dark Modern",
+    "aws.suppressPrompts": {
+    },
+    "git.ignoreRebaseWarning": true,
+    "git.enableSmartCommit": true,
+    "explorer.confirmDelete": false,
+    "dotnet.unitTests.runSettingsPath": "C:\\Users\\dhana\\source\\repos\\Playwright\\playwrightcsharp\\PlaywrightCsharp\\Chromium.runsettings",
+    "editor.formatOnSave": true,
+    "editor.formatOnPaste": true,
+    "playwright.reuseBrowser": true,
+    "playwright.showTrace": false,
+    "mcp": {
+        "servers": {
+            "my-weather-server": {
+                "type": "stdio",
+                "command": "npx",
+                "args": [
+                    "-y",
+                    "tsx",
+                    "main.ts"
+                ],
+                "cwd": "C:\\Users\\dhana\\source\\repos\\Playwright\\Typescript\\mcp-weather-server"
+            }
+        }
+    }
+}
