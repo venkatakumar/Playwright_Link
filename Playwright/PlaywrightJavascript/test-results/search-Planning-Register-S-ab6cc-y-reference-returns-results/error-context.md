@@ -1,0 +1,344 @@
+# Page snapshot
+
+```yaml
+- banner:
+  - banner "Northern Ireland Public Register Logo":
+    - img: planning portal
+  - navigation "Planning Portal site navigation":
+    - link "Applications":
+      - /url: https://submissions.planningsystemni.gov.uk/app/applications
+    - text: Planning Register
+    - link "Property Certificates":
+      - /url: https://rpc.planningsystemni.gov.uk/app
+    - text: Enforcements
+  - text: Log in
+- navigation "Planning register site navigation":
+  - link "Search applications":
+    - /url: /simple-search
+  - button "Saved searches"
+  - button "My comments"
+  - button "Tracked applications"
+- main:
+  - status:
+    - text: Planning Portal covers planning applications for the majority of planning authorities in Northern Ireland with the exception of
+    - link "Mid Ulster District Council.":
+      - /url: https://www.midulstercouncil.org
+    - link "Close info":
+      - img
+  - link "Simple search":
+    - /url: /simple-search
+  - link "Advanced search":
+    - /url: /advanced-search
+  - link "List search":
+    - /url: /list-search
+  - link "Map search":
+    - /url: /map-search
+  - group:
+    - heading "Filter options. Making changes to filters will update the search results." [level=2]: Filter options
+    - group:
+      - text: Date range
+      - radio "Last week"
+      - radio "Last month"
+      - radio "Last 6 months"
+    - group:
+      - text: "From:"
+      - textbox "From:"
+      - img
+    - group:
+      - text: "To:"
+      - textbox "To:"
+      - img
+    - heading "By area" [level=2]
+    - group:
+      - text: "Authority:"
+      - button "- Select -"
+    - group:
+      - text: "District Electoral Area (DEA):"
+      - button "- Select -"
+    - group:
+      - text: "Ward:"
+      - button "- Select -"
+    - heading "By application details" [level=2]
+    - group:
+      - text: "Application type:"
+      - button "- Select -"
+    - group:
+      - text: "Application status:"
+      - button "- Select -"
+    - group:
+      - text: "Decision type:"
+      - button "- Select -"
+  - heading "Search planning applications" [level=1]
+  - paragraph: Enter your search criteria below. You will need to input at least one search option to perform the search.
+  - heading "Address" [level=2]
+  - paragraph: Search by street, town, locality or postcode
+  - textbox "Address-input"
+  - img
+  - heading "Reference number" [level=2]
+  - button "clear"
+  - paragraph: Search by application or Planning Portal reference
+  - textbox "Reference number-input": LA04
+  - img
+  - heading "Name" [level=2]
+  - paragraph: Search by Applicant or Agent name
+  - textbox "Name-input"
+  - img
+  - heading "Keyword" [level=2]
+  - paragraph: Search by any keyword in the application proposal description
+  - textbox "Keyword-input"
+  - img
+  - text: "Sort by:"
+  - log
+  - text: Date received (newest)
+  - combobox "Date received (newest)"
+  - button "View saved searches"
+  - button "Save search"
+  - paragraph: "Showing 10 search results of many for: 'LA04'"
+  - button "Clear search"
+  - alert "Too Many Results Message":
+    - paragraph: Too many search results - try adding filters
+  - button "Search"
+  - 'link "Lands at Nos. 176-184 and No. 202 Woodstock Road and Nos. 2-20 Beersbridge RoadnBelfast. Determined Condition 24 OF LA04/2022/0209/F & LA04/2024/1635/F - Revised Landscaping Timeline Show more Application reference: LA04/2025/1128/DC Received: 24 Jul 2025 Decided: 07 Jul 2025"':
+    - /url: /application/700587
+    - paragraph: Lands at Nos. 176-184 and No. 202 Woodstock Road and Nos. 2-20 Beersbridge RoadnBelfast.
+    - text: Determined
+    - paragraph: Condition 24 OF LA04/2022/0209/F & LA04/2024/1635/F - Revised Landscaping Timeline
+    - button "Show more"
+    - paragraph:
+      - paragraph: "Application reference:"
+      - paragraph: LA04/2025/1128/DC
+    - paragraph: "Received: 24 Jul 2025"
+    - paragraph: "Decided: 07 Jul 2025"
+  - 'link "6 Downview Avenue, Belfast, BT15 4EZ Valid NMC to LA04/2024/0952/F- Reduction of the two-storey front extension to a single-storey extension. Change in proposed finish from render to red brick. Velux window changes. Show more Application reference: LA04/2025/1145/NMC Received: 07 Jul 2025 Decided: N/A"':
+    - /url: /application/700841
+    - paragraph: 6 Downview Avenue, Belfast, BT15 4EZ
+    - text: Valid
+    - paragraph: NMC to LA04/2024/0952/F- Reduction of the two-storey front extension to a single-storey extension. Change in proposed finish from render to red brick. Velux window changes.
+    - button "Show more"
+    - paragraph:
+      - paragraph: "Application reference:"
+      - paragraph: LA04/2025/1145/NMC
+    - paragraph: "Received: 07 Jul 2025"
+    - paragraph: "Decided: N/A"
+  - 'link "Lands at Belfast YMCA, Knightsbridge Park, Stranmillis, Belfast. To the east of Nos. 15; 17; 19; 25; 27; 29; and 35 Knightsbridge Manor. South of Nos. 26 to 34 (evens) Knightsbridge Manor, Nos. 65; 66; and 68 Vauxhall Park, and Nos. 15 and 17 Marylebone Park. West of Nos. 35 and 38 Sharman Drive, and Nos. 39 and 42 Sharman Park, Belfast Valid Proposed mixed-use development comprising 3G playing pitch with floodlighting; Children''s Play Area; Trim Trail; Car Parking; and c.25 No. Dwelling Units (including c.20% affordable housing). Development includes site access, internal roads, landscaping and all other associated site and access works. Show more Application reference: LA04/2025/1152/PAN Received: 07 Jul 2025 Decided: N/A"':
+    - /url: /application/700807
+    - paragraph: Lands at Belfast YMCA, Knightsbridge Park, Stranmillis, Belfast. To the east of Nos. 15; 17; 19; 25; 27; 29; and 35 Knightsbridge Manor. South of Nos. 26 to 34 (evens) Knightsbridge Manor, Nos. 65; 66; and 68 Vauxhall Park, and Nos. 15 and 17 Marylebone Park. West of Nos. 35 and 38 Sharman Drive, and Nos. 39 and 42 Sharman Park, Belfast
+    - text: Valid
+    - paragraph: Proposed mixed-use development comprising 3G playing pitch with floodlighting; Children's Play Area; Trim Trail; Car Parking; and c.25 No. Dwelling Units (including c.20% affordable housing). Development includes site access, internal roads, landscaping and all other associated site and access works.
+    - button "Show more"
+    - paragraph:
+      - paragraph: "Application reference:"
+      - paragraph: LA04/2025/1152/PAN
+    - paragraph: "Received: 07 Jul 2025"
+    - paragraph: "Decided: N/A"
+  - 'link "Approximately 50m north east of number 80 Sydenham Road, Belfast, BT3 9DP Consultation Open Discharge conditons 5,6, and 9 of LA04/2019/2912/F- Remediation strategy,Piling assessment and groundwater monitoring report. Show more Application reference: LA04/2025/1136/DC Received: 07 Jul 2025 Decided: N/A"':
+    - /url: /application/700822
+    - paragraph: Approximately 50m north east of number 80 Sydenham Road, Belfast, BT3 9DP
+    - text: Consultation Open
+    - paragraph: Discharge conditons 5,6, and 9 of LA04/2019/2912/F- Remediation strategy,Piling assessment and groundwater monitoring report.
+    - button "Show more"
+    - paragraph:
+      - paragraph: "Application reference:"
+      - paragraph: LA04/2025/1136/DC
+    - paragraph: "Received: 07 Jul 2025"
+    - paragraph: "Decided: N/A"
+  - 'link "29 Hazel View, Belfast, BT17 0WQ Valid Single storey rear extension Show more Application reference: LA04/2025/1127/F Received: 04 Jul 2025 Decided: N/A"':
+    - /url: /application/700623
+    - paragraph: 29 Hazel View, Belfast, BT17 0WQ
+    - text: Valid
+    - paragraph: Single storey rear extension
+    - button "Show more"
+    - paragraph:
+      - paragraph: "Application reference:"
+      - paragraph: LA04/2025/1127/F
+    - paragraph: "Received: 04 Jul 2025"
+    - paragraph: "Decided: N/A"
+  - 'link "Choice Housing Association 37-41 May Street, Belfast, BT1 4DN Valid Partial demolition of front elevation to form new entrance. Partial demolition of roof and removal of all existing windows, dormers and rooflight. Show more Application reference: LA04/2025/1126/DCA Received: 04 Jul 2025 Decided: N/A"':
+    - /url: /application/700628
+    - paragraph: Choice Housing Association 37-41 May Street, Belfast, BT1 4DN
+    - text: Valid
+    - paragraph: Partial demolition of front elevation to form new entrance. Partial demolition of roof and removal of all existing windows, dormers and rooflight.
+    - button "Show more"
+    - paragraph:
+      - paragraph: "Application reference:"
+      - paragraph: LA04/2025/1126/DCA
+    - paragraph: "Received: 04 Jul 2025"
+    - paragraph: "Decided: N/A"
+  - 'link "Fortwilliam Golf Club, 8 Downview Avenue, Belfast, BT15 4EZ Consultation Open Proposed 30m monopole with 12no. antennas, 4no. transmission dishes, 6no. equipment cabinets and ancillary development Show more Application reference: LA04/2025/1125/F Received: 04 Jul 2025 Decided: N/A"':
+    - /url: /application/700760
+    - paragraph: Fortwilliam Golf Club, 8 Downview Avenue, Belfast, BT15 4EZ
+    - text: Consultation Open
+    - paragraph: Proposed 30m monopole with 12no. antennas, 4no. transmission dishes, 6no. equipment cabinets and ancillary development
+    - button "Show more"
+    - paragraph:
+      - paragraph: "Application reference:"
+      - paragraph: LA04/2025/1125/F
+    - paragraph: "Received: 04 Jul 2025"
+    - paragraph: "Decided: N/A"
+  - 'link "140 Donegall Street, Belfast, BT1 2FJ Consultation Open Discharge of Condition 3 LA04/2021/0516/F - Updated stone cladding details. Show more Application reference: LA04/2025/1150/DC Received: 03 Jul 2025 Decided: N/A"':
+    - /url: /application/700794
+    - paragraph: 140 Donegall Street, Belfast, BT1 2FJ
+    - text: Consultation Open
+    - paragraph: Discharge of Condition 3 LA04/2021/0516/F - Updated stone cladding details.
+    - button "Show more"
+    - paragraph:
+      - paragraph: "Application reference:"
+      - paragraph: LA04/2025/1150/DC
+    - paragraph: "Received: 03 Jul 2025"
+    - paragraph: "Decided: N/A"
+  - 'link "109 Marlborough Park South, Belfast BT9 6HW Site Inspection Complete 2 storey side extension, single storey side extension and attached garage with new vehicular access with demolition of external doors, windows and front enterance porch. Show more Application reference: LA04/2025/1148/DCA Received: 03 Jul 2025 Decided: N/A"':
+    - /url: /application/700779
+    - paragraph: 109 Marlborough Park South, Belfast BT9 6HW
+    - text: Site Inspection Complete
+    - paragraph: 2 storey side extension, single storey side extension and attached garage with new vehicular access with demolition of external doors, windows and front enterance porch.
+    - button "Show more"
+    - paragraph:
+      - paragraph: "Application reference:"
+      - paragraph: LA04/2025/1148/DCA
+    - paragraph: "Received: 03 Jul 2025"
+    - paragraph: "Decided: N/A"
+  - 'link "42 Newforge Lane, Belfast, BT9 5NW Consultation Open Demolition of the existing dwelling and garage, construction of a new replacement dwelling with integral garage and carport including covered external seating area, new detached garage with a walled garden and associated site works - amended application from that previously approved under LA04/2024/1142/F. Show more Application reference: LA04/2025/1118/F Received: 02 Jul 2025 Decided: N/A"':
+    - /url: /application/700788
+    - paragraph: 42 Newforge Lane, Belfast, BT9 5NW
+    - text: Consultation Open
+    - paragraph: Demolition of the existing dwelling and garage, construction of a new replacement dwelling with integral garage and carport including covered external seating area, new detached garage with a walled garden and associated site works - amended application from that previously approved under LA04/2024/1142/F.
+    - button "Show more"
+    - paragraph:
+      - paragraph: "Application reference:"
+      - paragraph: LA04/2025/1118/F
+    - paragraph: "Received: 02 Jul 2025"
+    - paragraph: "Decided: N/A"
+  - group:
+    - text: Results per page
+    - log
+    - text: "10"
+    - combobox "Results per page"
+    - img "View options"
+  - navigation "Storybook pagination example":
+    - text: Viewing page 1 of 2009
+    - button "Go to previous page" [disabled]:
+      - img
+    - list:
+      - listitem
+      - listitem:
+        - button "Current Page, Page 1" [disabled]: "1"
+      - listitem:
+        - button "Go to Page 2": "2"
+      - listitem:
+        - button "Go to Page 3": "3"
+      - listitem:
+        - button "Go to Page 4": "4"
+      - listitem:
+        - button "Go to Page 5": "5"
+      - listitem
+    - button "Go to next page":
+      - img
+  - group:
+    - text: Jump to page
+    - spinbutton "Jump to page"
+- contentinfo:
+  - link "Planning Portal":
+    - /url: /
+    - img "Planning Portal"
+  - separator
+  - navigation:
+    - paragraph: Planning Services
+    - link "Create applications":
+      - /url: https://submissions.planningsystemni.gov.uk/app/applications
+    - link "Search applications":
+      - /url: /simple-search
+    - link "Report unauthorised development":
+      - /url: /enforcement
+    - link "Request a Tree Preservation Order":
+      - /url: https://submissions.planningsystemni.gov.uk/app/applications
+    - link "Submit a Planning Appeal":
+      - /url: https://www.pacni.gov.uk/
+    - paragraph: Planning Permission
+    - link "Do you need planning permission?":
+      - /url: https://www.nidirect.gov.uk/articles/planning-permission-when-apply-0
+    - link "How to apply":
+      - /url: https://www.nidirect.gov.uk/articles/making-planning-application
+    - link "The decision making process":
+      - /url: https://www.nidirect.gov.uk/articles/planning-decisions
+    - paragraph: NI Planning Law and Guidance
+    - link "NI Planning Legislation":
+      - /url: https://www.infrastructure-ni.gov.uk/topics/planning/planning-legislation
+    - link "NI Planning Policy":
+      - /url: https://www.infrastructure-ni.gov.uk/topics/planning/regional-planning-and-policy
+    - link "NI Planning Guidance":
+      - /url: https://www.infrastructure-ni.gov.uk/topics/planning/planning-guidance
+    - paragraph: Mid Ulster District Council
+    - link "Apply for Planning Permission":
+      - /url: https://www.midulstercouncil.org/
+    - link "View Mid Ulster applications":
+      - /url: https://www.midulstercouncil.org/
+    - paragraph: Building Regulations
+    - link "Apply for Building Regulations":
+      - /url: https://www.nidirect.gov.uk/articles/how-apply-building-regulations-approval
+    - paragraph: Regional Property Certificates
+    - link "Apply for a Regional Property Certificate":
+      - /url: https://rpc.planningsystemni.gov.uk/app
+    - link "Regional Property Certificate Guidance":
+      - /url: https://www.nidirect.gov.uk/articles/regional-property-certificates
+    - paragraph: Useful Links and Information
+    - link "Contact Us":
+      - /url: https://www.nidirect.gov.uk/contacts/planning-offices-ni
+    - link "Terms and Conditions":
+      - /url: https://ecab.planningportal.co.uk/uploads/appPDF/NI Planning Portal TCs vMar22.pdf
+    - link "Complaining about a planning service":
+      - /url: https://www.nidirect.gov.uk/articles/making-planning-related-complaint
+    - paragraph: Open Data
+    - link "Download recent Planning Applications":
+      - /url: /open-data
+  - paragraph: Participating authorities
+  - link "Antrim and Newtownabbey Borough Council Logo":
+    - /url: https://antrimandnewtownabbey.gov.uk/
+    - img "Antrim and Newtownabbey Borough Council Logo"
+  - link "Ards and North Down Council Logo":
+    - /url: https://www.ardsandnorthdown.gov.uk/
+    - img "Ards and North Down Council Logo"
+  - link "Armagh City Banbridge and Craigavon Borough Council Logo":
+    - /url: https://www.armaghbanbridgecraigavon.gov.uk/
+    - img "Armagh City Banbridge and Craigavon Borough Council Logo"
+  - link "Belfast City Council Logo":
+    - /url: https://www.belfastcity.gov.uk/
+    - img "Belfast City Council Logo"
+  - link "Causeway Coast and Glens Borough Council Logo":
+    - /url: https://www.causewaycoastandglens.gov.uk/
+    - img "Causeway Coast and Glens Borough Council Logo"
+  - link "Derry City and Strabane Council Logo":
+    - /url: https://www.derrystrabane.com/
+    - img "Derry City and Strabane Council Logo"
+  - link "Fermanagh and Omagh Distict Council Logo":
+    - /url: https://www.fermanaghomagh.com/
+    - img "Fermanagh and Omagh Distict Council Logo"
+  - link "Lisburn and Castlereagh City Council":
+    - /url: https://www.lisburncastlereagh.gov.uk/
+    - img "Lisburn and Castlereagh City Council"
+  - link "Mid and East Antrim Borough Council Logo":
+    - /url: https://www.midandeastantrim.gov.uk/
+    - img "Mid and East Antrim Borough Council Logo"
+  - link "Newry Mourne and Down District Council Logo":
+    - /url: https://www.newrymournedown.org/
+    - img "Newry Mourne and Down District Council Logo"
+  - link "Department for Infrastructure Logo":
+    - /url: https://www.infrastructure-ni.gov.uk/
+    - img "Department for Infrastructure Logo"
+  - paragraph: The Planning Portal is developed and powered by TerraQuest. All content © 2025 Planning Portal.
+  - link "TerraQuest Logo":
+    - /url: https://www.terraquest.co.uk
+    - img "TerraQuest Logo"
+- list:
+  - listitem
+- list:
+  - listitem
+- list:
+  - listitem
+- list:
+  - listitem
+- list:
+  - listitem
+- list:
+  - listitem
+- alert
+```
