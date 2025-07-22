@@ -1,0 +1,15 @@
+{
+  "name": "anothertry",
+  "version": "1.0.0",
+  "main": "index.js",
+  "scripts": {
+    "test": "npx playwright test"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "description": "API Automation Framework using Playwright MCP",
+  "dependencies": {
+    "@playwright/test": "^1.54.1"
+  }
+}

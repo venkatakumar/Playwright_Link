@@ -1,0 +1,12 @@
+version: '3'
+services:
+  playwright-docker:
+    image: mcr.microsoft.com/playwright:v1.39.0-jammy
+    ports:
+      - "8080:8080"
+    environment:
+      - PWDEBUG=1
+    command: npx playwright run-server --port 8080
+    volumes:
+      - ./:/app
+    working_dir: /app
