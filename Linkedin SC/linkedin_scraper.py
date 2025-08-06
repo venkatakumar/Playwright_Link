@@ -245,52 +245,244 @@ class LinkedInScraper:
             try:
                 post_data = {}
                 
-                # Extract post content
-                content_element = await post_element.query_selector(self.selectors['post_content'])
-                post_data['content'] = await content_element.inner_text() if content_element else ""
+                # Extract post content with multiple selectors
+                content = ""
+                content_selectors = [
+                    '.feed-shared-text',
+                    '.feed-shared-inline-show-more-text', 
+                    '.update-components-text',
+                    '[data-test-id="main-feed-activity-card"] .feed-shared-text'
+                ]
                 
-                # Extract author name
-                author_element = await post_element.query_selector(self.selectors['author_name'])
-                post_data['author_name'] = await author_element.inner_text() if author_element else ""
+                for selector in content_selectors:
+                    try:
+                        content_element = await post_element.query_selector(selector)
+                        if content_element:
+                            content = await content_element.inner_text()
+                            if content and len(content.strip()) > 0:
+                                break
+                    except:
+                        continue
                 
-                # Extract author title/occupation
-                title_element = await post_element.query_selector(self.selectors['author_title'])
-                post_data['author_title'] = await title_element.inner_text() if title_element else ""
+                post_data['content'] = content.strip() if content else ""
                 
-                # Extract post date
-                date_element = await post_element.query_selector(self.selectors['post_date'])
-                if date_element:
-                    date_attr = await date_element.get_attribute('datetime')
-                    post_data['post_date'] = date_attr if date_attr else ""
-                else:
-                    post_data['post_date'] = ""
+                # Extract author name with multiple selectors
+                # Extract author name with more specific selectors
+                author_name = ""
+                author_selectors = [
+                    '.feed-shared-actor__name .visually-hidden',  # LinkedIn screen reader text (most reliable)
+                    '.feed-shared-actor__name a',  # Name link
+                    '.update-components-actor__name a',  # Alternative actor name
+                    '.feed-shared-actor__name span[aria-hidden="true"]',  # Visible name span
+                    '.feed-shared-actor__name',  # Fallback
+                    '[data-test-id="post-author-name"]'  # Test ID selector
+                ]
                 
-                # Extract likes/reactions count
-                likes_element = await post_element.query_selector(self.selectors['likes_count'])
-                if likes_element:
-                    likes_text = await likes_element.get_attribute('aria-label') or ""
-                    post_data['likes_count'] = self._extract_number(likes_text)
-                else:
-                    post_data['likes_count'] = 0
+                for selector in author_selectors:
+                    try:
+                        author_element = await post_element.query_selector(selector)
+                        if author_element:
+                            author_name = await author_element.inner_text()
+                            # Clean up the name (remove extra whitespace, "• Following", etc.)
+                            if author_name:
+                                author_name = author_name.strip()
+                                # Remove common LinkedIn suffixes
+                                author_name = author_name.replace("• Following", "").replace("• Connect", "").strip()
+                                if len(author_name) > 0 and not author_name.lower().startswith("follow"):
+                                    break
+                    except:
+                        continue
                 
-                # Extract comments count
-                comments_element = await post_element.query_selector(self.selectors['comments_count'])
-                if comments_element:
-                    comments_text = await comments_element.get_attribute('aria-label') or ""
-                    post_data['comments_count'] = self._extract_number(comments_text)
-                else:
-                    post_data['comments_count'] = 0
+                post_data['author_name'] = author_name.strip() if author_name else ""
                 
-                # Extract image URLs
-                image_elements = await post_element.query_selector_all(self.selectors['post_images'])
+                # Extract author title (job title, not follower count)
+                author_title = ""
+                title_selectors = [
+                    '.feed-shared-actor__description .visually-hidden',  # Screen reader description
+                    '.feed-shared-actor__description',  # Main description
+                    '.update-components-actor__description',  # Alternative description
+                    '.feed-shared-actor__sub-description .visually-hidden',  # Sub description screen reader
+                ]
+                
+                for selector in title_selectors:
+                    try:
+                        title_element = await post_element.query_selector(selector)
+                        if title_element:
+                            author_title = await title_element.inner_text()
+                            if author_title:
+                                author_title = author_title.strip()
+                                # Skip if it's follower count or connections
+                                if (not any(word in author_title.lower() for word in ['followers', 'connections', 'follow']) 
+                                    and len(author_title) > 0):
+                                    break
+                    except:
+                        continue
+                
+                post_data['author_title'] = author_title.strip() if author_title else ""
+                
+                # Extract post date with multiple selectors and formats
+                post_date = ""
+                date_selectors = [
+                    '.feed-shared-actor__sub-description time',  # Time element in sub-description
+                    '.update-components-actor__sub-description time',  # Alternative time element
+                    'time[datetime]',  # Any time element with datetime attribute
+                    '.feed-shared-actor__sub-description a',  # Date link in sub-description
+                    '.update-components-actor__sub-description a',  # Alternative date link
+                ]
+                
+                for selector in date_selectors:
+                    try:
+                        date_element = await post_element.query_selector(selector)
+                        if date_element:
+                            # Try to get datetime attribute first (most reliable)
+                            date_attr = await date_element.get_attribute('datetime')
+                            if date_attr:
+                                post_date = date_attr
+                                break
+                            
+                            # Fallback to text content
+                            date_text = await date_element.inner_text()
+                            if date_text and date_text.strip():
+                                post_date = date_text.strip()
+                                break
+                    except:
+                        continue
+                
+                post_data['post_date'] = post_date
+                
+                # Extract likes/reactions count with multiple selectors
+                likes_count = 0
+                likes_selectors = [
+                    'button[aria-label*="reaction"]',
+                    '.social-counts-reactions__count',
+                    '.feed-shared-social-action-bar__reaction-count',
+                    'button[data-control-name="reactions_count"]'
+                ]
+                
+                for selector in likes_selectors:
+                    try:
+                        likes_element = await post_element.query_selector(selector)
+                        if likes_element:
+                            likes_text = await likes_element.get_attribute('aria-label') or await likes_element.inner_text()
+                            if likes_text:
+                                likes_count = self._extract_number(likes_text)
+                                if likes_count > 0:
+                                    break
+                    except:
+                        continue
+                
+                post_data['likes_count'] = likes_count
+                
+                # Extract comments count with multiple selectors
+                comments_count = 0
+                comments_selectors = [
+                    'button[aria-label*="comment"]',
+                    '.social-counts-comments__count',
+                    'button[data-control-name="comments"]'
+                ]
+                
+                for selector in comments_selectors:
+                    try:
+                        comments_element = await post_element.query_selector(selector)
+                        if comments_element:
+                            comments_text = await comments_element.get_attribute('aria-label') or await comments_element.inner_text()
+                            if comments_text:
+                                comments_count = self._extract_number(comments_text)
+                                if comments_count > 0:
+                                    break
+                    except:
+                        continue
+                
+                post_data['comments_count'] = comments_count
+                
+                # Extract image URLs (only actual post images, not profile pics)
+                image_elements = await post_element.query_selector_all('img[src*="media.licdn.com"], img[src*="dms.licdn.com"]')
                 image_urls = []
                 for img_element in image_elements:
                     img_src = await img_element.get_attribute('src')
-                    if img_src:
+                    if img_src and '/media/' in img_src:  # Only actual media images
                         image_urls.append(img_src)
                 
                 post_data['image_urls'] = image_urls
-                post_data['image_files'] = []  # Will be populated after download
+                
+                # Extract post URL
+                post_url = ""
+                
+                # Method 1: Look for direct post links in the post
+                post_link_selectors = [
+                    'a[href*="/posts/"]',  # Direct post links
+                    '.feed-shared-text-view a[href*="/posts/"]',  # Links within text
+                    '.feed-shared-header a[href*="/posts/"]',  # Header links
+                    'a[href*="/feed/update/"]',  # Activity update links
+                ]
+                
+                for selector in post_link_selectors:
+                    try:
+                        link_element = await post_element.query_selector(selector)
+                        if link_element:
+                            href = await link_element.get_attribute('href')
+                            if href and ('/posts/' in href or '/feed/update/' in href):
+                                # Convert relative URLs to absolute
+                                if href.startswith('/'):
+                                    post_url = f"https://www.linkedin.com{href}"
+                                elif 'linkedin.com' in href:
+                                    post_url = href
+                                break
+                    except:
+                        continue
+                
+                # Method 2: Look for share links that contain the post ID
+                if not post_url:
+                    try:
+                        share_element = await post_element.query_selector('button[aria-label*="Share"], .share-via-app-button, .share-actions button')
+                        if share_element:
+                            # Sometimes share buttons have data attributes with the post ID
+                            onclick = await share_element.get_attribute('onclick') or ''
+                            if 'activity:' in onclick:
+                                activity_id = onclick.split('activity:')[1].split(',')[0].strip('"\'')
+                                post_url = f"https://www.linkedin.com/feed/update/urn:li:activity:{activity_id}/"
+                    except:
+                        pass
+                
+                # Method 3: Extract from data-urn attributes and construct proper LinkedIn URL
+                if not post_url:
+                    try:
+                        # Look for elements with URN data
+                        urn_selectors = [
+                            '[data-urn*="activity:"]',
+                            '[data-activity-urn]',
+                            '.feed-shared-update-v2',
+                            '.feed-shared-activity'
+                        ]
+                        
+                        for urn_selector in urn_selectors:
+                            urn_element = await post_element.query_selector(urn_selector)
+                            if urn_element:
+                                urn = await urn_element.get_attribute('data-urn') or await urn_element.get_attribute('data-activity-urn')
+                                if urn and 'activity:' in urn:
+                                    # Extract activity ID from URN like "urn:li:activity:1234567890"
+                                    activity_id = urn.split('activity:')[1].split(',')[0]
+                                    # Use LinkedIn's feed update URL format
+                                    post_url = f"https://www.linkedin.com/feed/update/urn:li:activity:{activity_id}/"
+                                    break
+                    except:
+                        pass
+                
+                # Method 4: Try to find permalink or timestamp links
+                if not post_url:
+                    try:
+                        timestamp_element = await post_element.query_selector('.feed-shared-actor__sub-description a, .update-components-actor__sub-description a')
+                        if timestamp_element:
+                            href = await timestamp_element.get_attribute('href')
+                            if href:
+                                if href.startswith('/'):
+                                    post_url = f"https://www.linkedin.com{href}"
+                                elif 'linkedin.com' in href:
+                                    post_url = href
+                    except:
+                        pass
+                
+                post_data['post_url'] = post_url
                 post_data['scraped_at'] = datetime.now().isoformat()
                 
                 posts_data.append(post_data)
@@ -306,9 +498,34 @@ class LinkedInScraper:
         return posts_data
 
     def _extract_number(self, text: str) -> int:
-        """Extract number from text (e.g., '15 reactions' -> 15)"""
-        numbers = re.findall(r'\d+', text)
-        return int(numbers[0]) if numbers else 0
+        """Extract number from text (e.g., '15 reactions', '1.2K likes' -> 1200)"""
+        if not text:
+            return 0
+        
+        # Clean the text and convert to uppercase for easier parsing
+        clean_text = re.sub(r'[^\d.,KMB]', '', text.upper())
+        
+        if not clean_text:
+            return 0
+        
+        try:
+            if 'K' in clean_text:
+                number = float(clean_text.replace('K', '').replace(',', '.'))
+                return int(number * 1000)
+            elif 'M' in clean_text:
+                number = float(clean_text.replace('M', '').replace(',', '.'))
+                return int(number * 1000000)
+            elif 'B' in clean_text:
+                number = float(clean_text.replace('B', '').replace(',', '.'))
+                return int(number * 1000000000)
+            else:
+                # Handle comma-separated numbers
+                number_str = clean_text.replace(',', '')
+                return int(float(number_str)) if number_str else 0
+        except (ValueError, TypeError):
+            # Fallback: extract first number found
+            numbers = re.findall(r'\d+', text)
+            return int(numbers[0]) if numbers else 0
 
     async def download_images(self, posts_data: List[Dict]) -> None:
         """
@@ -373,10 +590,10 @@ class LinkedInScraper:
                     'author_name': post.get('author_name', ''),
                     'author_title': post.get('author_title', ''),
                     'post_date': post.get('post_date', ''),
+                    'post_url': post.get('post_url', ''),
                     'likes_count': post.get('likes_count', 0),
                     'comments_count': post.get('comments_count', 0),
                     'image_urls': '; '.join(post.get('image_urls', [])),
-                    'image_files': '; '.join(post.get('image_files', [])),
                     'scraped_at': post.get('scraped_at', '')
                 }
                 csv_data.append(csv_row)
