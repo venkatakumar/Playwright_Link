@@ -405,8 +405,10 @@ class LinkedInScraper:
             return
         
         if not self.search_keywords or not self.search_keywords[0]:
-            print("❌ Search keywords not specified in .env file")
-            return
+            print("⚠️ No search keywords specified - will scrape from main feed")
+            use_main_feed = True
+        else:
+            use_main_feed = False
         
         async with async_playwright() as p:
             # Launch browser
@@ -429,9 +431,15 @@ class LinkedInScraper:
                 if not await self.login_linkedin(page):
                     return
                 
-                # Step 2: Search for posts
-                if not await self.search_posts(page, self.search_keywords):
-                    return
+                # Step 2: Search for posts or go to main feed
+                if use_main_feed:
+                    print("📱 Navigating to LinkedIn main feed...")
+                    await page.goto("https://www.linkedin.com/feed/", wait_until='domcontentloaded')
+                    await page.wait_for_timeout(5000)  # Wait for content to load
+                    print("✅ Reached LinkedIn feed!")
+                else:
+                    if not await self.search_posts(page, self.search_keywords):
+                        return
                 
                 # Step 3: Scroll to load more posts
                 await self.scroll_page(page, max_scrolls=5)

@@ -19,15 +19,15 @@ SELECTORS = {
     'load_more': 'button[aria-label*="Show more results"]',
     
     # Post container and content
-    'post_container': 'div[data-id]',  # Main post wrapper
-    'post_content': '.feed-shared-text',  # Post text content
-    'post_content_alt': '.feed-shared-update-v2__commentary',  # Alternative selector
+    'post_container': 'article, div[data-urn], .feed-shared-update-v2',  # Multiple options for post wrapper
+    'post_content': '.feed-shared-text, .feed-shared-inline-show-more-text, .update-components-text',  # Post text content
+    'post_content_alt': '.feed-shared-update-v2__commentary, [data-test-id="main-feed-activity-card"]',  # Alternative selector
     
     # Author information
-    'author_name': '.feed-shared-actor__name',
-    'author_name_alt': '.update-components-actor__name',
-    'author_title': '.feed-shared-actor__description',
-    'author_title_alt': '.update-components-actor__description',
+    'author_name': '.feed-shared-actor__name, .update-components-actor__name, [data-test-id="post-author-name"]',
+    'author_name_alt': '.feed-shared-actor__name a, .update-components-actor__name a',
+    'author_title': '.feed-shared-actor__description, .update-components-actor__description',
+    'author_title_alt': '.feed-shared-actor__sub-description, .update-components-actor__sub-description',
     
     # Post metadata
     'post_date': 'time',
@@ -41,9 +41,9 @@ SELECTORS = {
     'shares_count': 'button[aria-label*="share"]',
     
     # Media content
-    'post_images': '.feed-shared-image img',
-    'post_images_alt': '.update-components-image img',
-    'post_videos': '.feed-shared-video video',
+    'post_images': '.feed-shared-image img, .update-components-image img, img[alt*="post"], img[alt*="shared"]',
+    'post_images_alt': '.feed-shared-article__image img, [data-test-id="post-image"] img',
+    'post_videos': '.feed-shared-video video, .update-components-video video',
     
     # Navigation and loading
     'feed_container': '.feed-container',
