@@ -75,3 +75,13 @@ scraper.log
 # Temporary files
 *.tmp
 *.temp
+
+# Ignore other unrelated project directories
+../PP2-AutomationTests/
+../Playwright/
+../TQ-E2E-*/
+../Technical-Test-Automation-Test/
+../tq-*/
+../JavaSelenium4/
+../copilot-git/
+../Playwright_Link_Clean/
