@@ -16,6 +16,9 @@ from playwright.async_api import async_playwright, Page, Browser, BrowserContext
 from dotenv import load_dotenv
 from asyncio_throttle import Throttler
 
+# Import our enhancement utilities
+from utils import enhance_post_data
+
 # Load environment variables
 load_dotenv()
 
@@ -485,7 +488,9 @@ class LinkedInScraper:
                 post_data['post_url'] = post_url
                 post_data['scraped_at'] = datetime.now().isoformat()
                 
-                posts_data.append(post_data)
+                # 🚀 ENHANCEMENT: Apply our new features
+                enhanced_post_data = enhance_post_data(post_data)
+                posts_data.append(enhanced_post_data)
                 
                 if (i + 1) % 10 == 0:
                     print(f"✅ Parsed {i + 1} posts...")
@@ -582,10 +587,11 @@ class LinkedInScraper:
             return
         
         try:
-            # Prepare data for CSV
+            # Prepare data for CSV with enhanced fields
             csv_data = []
             for post in posts_data:
                 csv_row = {
+                    # Original fields
                     'content': post.get('content', ''),
                     'author_name': post.get('author_name', ''),
                     'author_title': post.get('author_title', ''),
@@ -594,7 +600,17 @@ class LinkedInScraper:
                     'likes_count': post.get('likes_count', 0),
                     'comments_count': post.get('comments_count', 0),
                     'image_urls': '; '.join(post.get('image_urls', [])),
-                    'scraped_at': post.get('scraped_at', '')
+                    'scraped_at': post.get('scraped_at', ''),
+                    
+                    # 🚀 NEW ENHANCED FIELDS
+                    'author_firstName': post.get('author_firstName', ''),
+                    'author_lastName': post.get('author_lastName', ''),
+                    'hashtags': '; '.join(post.get('hashtags', [])),
+                    'mentions': '; '.join(post.get('mentions', [])),
+                    'postedAtISO': post.get('postedAtISO', ''),
+                    'timeSincePosted': post.get('timeSincePosted', ''),
+                    'post_type': post.get('post_type', ''),
+                    'enhanced_at': post.get('enhanced_at', ''),
                 }
                 csv_data.append(csv_row)
             

@@ -12,6 +12,9 @@ from pathlib import Path
 import json
 import pandas as pd
 
+# Import our enhancement utilities
+from utils import enhance_post_data
+
 
 async def test_anonymous_scraping():
     """Test anonymous LinkedIn scraping (no login required)"""
@@ -56,7 +59,7 @@ async def test_data_analysis_without_scraping():
     print("Testing data processing and export features...")
     print()
     
-    # Create sample LinkedIn data for testing
+    # Create sample LinkedIn data for testing with enhanced features
     sample_data = [
         {
             "content": "Excited to announce our new AI breakthrough! 🚀 This technology will revolutionize the industry. #AI #Innovation #TechNews",
@@ -69,10 +72,6 @@ async def test_data_analysis_without_scraping():
             "likes_count": 245,
             "comments_count": 32,
             "shares_count": 18,
-            "post_type": "text",
-            "hashtags": ["#AI", "#Innovation", "#TechNews"],
-            "mentions": [],
-            "links": [],
             "image_urls": [],
             "scraped_at": "2025-08-07T12:00:00Z"
         },
@@ -87,10 +86,6 @@ async def test_data_analysis_without_scraping():
             "likes_count": 156,
             "comments_count": 24,
             "shares_count": 12,
-            "post_type": "text",
-            "hashtags": [],
-            "mentions": ["@DataConf"],
-            "links": [],
             "image_urls": [],
             "scraped_at": "2025-08-07T12:00:00Z"
         },
@@ -105,14 +100,21 @@ async def test_data_analysis_without_scraping():
             "likes_count": 89,
             "comments_count": 15,
             "shares_count": 8,
-            "post_type": "article_share",
-            "hashtags": ["#Research", "#DeepLearning", "#AI"],
-            "mentions": [],
-            "links": ["https://arxiv.org/example-paper"],
             "image_urls": [],
             "scraped_at": "2025-08-07T12:00:00Z"
         }
     ]
+    
+    # 🚀 APPLY ENHANCEMENTS to sample data
+    print("🔄 Applying new enhancement features...")
+    enhanced_data = []
+    for post in sample_data:
+        enhanced_post = enhance_post_data(post)
+        enhanced_data.append(enhanced_post)
+    
+    print(f"✅ Enhanced {len(enhanced_data)} posts with new features!")
+    print("🆕 New fields added: firstName, lastName, hashtags, mentions, ISO timestamps, post types")
+    print()
     
     # Test export formats
     output_dir = Path("output")
@@ -121,12 +123,12 @@ async def test_data_analysis_without_scraping():
     # Test JSON export
     json_path = output_dir / "test_data.json"
     with open(json_path, 'w', encoding='utf-8') as f:
-        json.dump(sample_data, f, indent=2, ensure_ascii=False)
+        json.dump(enhanced_data, f, indent=2, ensure_ascii=False)
     print(f"✅ JSON export test: {json_path}")
     
     # Test CSV export
     csv_path = output_dir / "test_data.csv"
-    df = pd.DataFrame(sample_data)
+    df = pd.DataFrame(enhanced_data)
     df.to_csv(csv_path, index=False, encoding='utf-8')
     print(f"✅ CSV export test: {csv_path}")
     
@@ -140,18 +142,27 @@ async def test_data_analysis_without_scraping():
     except Exception as e:
         print(f"⚠️ Excel export failed: {str(e)}")
     
-    # Test data analysis
-    print(f"\n📈 Sample Data Analysis:")
-    print(f"   • Total posts: {len(sample_data)}")
-    print(f"   • Total likes: {sum(post['likes_count'] for post in sample_data)}")
-    print(f"   • Total comments: {sum(post['comments_count'] for post in sample_data)}")
-    print(f"   • Total shares: {sum(post['shares_count'] for post in sample_data)}")
+    # Test enhanced data analysis
+    print(f"\n📈 Enhanced Sample Data Analysis:")
+    print(f"   • Total posts: {len(enhanced_data)}")
+    print(f"   • Total likes: {sum(post['likes_count'] for post in enhanced_data)}")
+    print(f"   • Total comments: {sum(post['comments_count'] for post in enhanced_data)}")
     
-    hashtags = []
-    for post in sample_data:
-        hashtags.extend(post['hashtags'])
-    unique_hashtags = list(set(hashtags))
-    print(f"   • Unique hashtags: {unique_hashtags}")
+    # Analyze enhanced fields
+    all_hashtags = []
+    all_mentions = []
+    for post in enhanced_data:
+        all_hashtags.extend(post.get('hashtags', []))
+        all_mentions.extend(post.get('mentions', []))
+    
+    unique_hashtags = list(set(all_hashtags))
+    unique_mentions = list(set(all_mentions))
+    
+    print(f"   • 🆕 Unique hashtags: {unique_hashtags}")
+    print(f"   • 🆕 Unique mentions: {unique_mentions}")
+    print(f"   • 🆕 Author first names: {[post.get('author_firstName', '') for post in enhanced_data]}")
+    print(f"   • 🆕 Post types: {[post.get('post_type', '') for post in enhanced_data]}")
+    print(f"   • 🆕 Relative times: {[post.get('timeSincePosted', '') for post in enhanced_data]}")
     
     return True
 
