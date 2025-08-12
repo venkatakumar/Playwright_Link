@@ -654,7 +654,7 @@ def enhance_post_data(post_data: Dict) -> Dict:
     enhanced_data['mentions'] = mentions
     
     # 4. Format timestamp to ISO and calculate relative time
-    post_date = post_data.get('post_date', '')
+    post_date = post_data.get('timestamp', '') or post_data.get('post_date', '')
     iso_timestamp = format_timestamp_iso(post_date)
     enhanced_data['postedAtISO'] = iso_timestamp
     enhanced_data['timeSincePosted'] = calculate_relative_time(iso_timestamp)

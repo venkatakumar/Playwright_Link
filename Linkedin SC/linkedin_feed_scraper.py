@@ -65,9 +65,9 @@ class LinkedInFeedScraper:
         scroll_count = 0
         
         while collected_posts < max_posts and scroll_count < scroll_attempts:
-            # Find all post containers
+            # Find all post containers - updated selectors based on current LinkedIn structure
             post_containers = await self.page.query_selector_all(
-                'div[data-chameleon-result-urn], .feed-shared-update-v2, div.feed-shared-update-v2__content'
+                '.feed-shared-update-v2, [data-urn*="activity"], .feed-shared-update-v2--minimal-padding'
             )
             
             print(f"📊 Found {len(post_containers)} post containers on page")
@@ -98,37 +98,77 @@ class LinkedInFeedScraper:
         try:
             post_data = {}
             
-            # Author name - try multiple selectors
+            # Author name - updated with correct selectors found from debugging
             try:
-                author_element = await container.query_selector(
-                    '.feed-shared-actor__name, .update-components-actor__name, [data-chameleon-result-urn] a span, .feed-shared-actor__name a, .update-components-actor__name a'
-                )
+                # Primary selector that works - span with dir="ltr" often contains names
+                author_element = await container.query_selector('span[dir="ltr"]')
                 if author_element:
-                    post_data['author_name'] = await author_element.inner_text()
+                    author_text = (await author_element.inner_text()).strip()
+                    # Filter out long text that's clearly not a name (content vs name)
+                    if author_text and len(author_text) < 100 and '\n' in author_text:
+                        # Take first line which is usually the name, and clean duplicates
+                        first_line = author_text.split('\n')[0].strip()
+                        # Remove duplicate names (e.g., "John Smith\nJohn Smith" -> "John Smith")
+                        if first_line and len(first_line) < 50:
+                            # Check if it's a duplicate name pattern
+                            parts = first_line.split()
+                            if len(parts) >= 2 and len(parts) % 2 == 0:
+                                # Check if first half equals second half (duplicate pattern)
+                                mid = len(parts) // 2
+                                first_half = ' '.join(parts[:mid])
+                                second_half = ' '.join(parts[mid:])
+                                if first_half == second_half:
+                                    post_data['author_name'] = first_half
+                                else:
+                                    post_data['author_name'] = first_line
+                            else:
+                                post_data['author_name'] = first_line
+                        else:
+                            post_data['author_name'] = "LinkedIn User"
+                    elif author_text and len(author_text) < 50:
+                        # Single line name, check for duplicates
+                        parts = author_text.split()
+                        if len(parts) >= 2 and len(parts) % 2 == 0:
+                            mid = len(parts) // 2
+                            first_half = ' '.join(parts[:mid])
+                            second_half = ' '.join(parts[mid:])
+                            if first_half == second_half:
+                                post_data['author_name'] = first_half
+                            else:
+                                post_data['author_name'] = author_text
+                        else:
+                            post_data['author_name'] = author_text
+                    else:
+                        post_data['author_name'] = "LinkedIn User"
                 else:
-                    # Try alternative approach - look for any clickable name
-                    name_elements = await container.query_selector_all('a[href*="/in/"], a[href*="/company/"]')
-                    if name_elements:
-                        first_name = await name_elements[0].inner_text()
-                        if first_name and len(first_name.strip()) > 0:
-                            post_data['author_name'] = first_name.strip()
+                    # Fallback to profile links
+                    profile_links = await container.query_selector_all('a[href*="/in/"]')
+                    if profile_links:
+                        link_text = await profile_links[0].inner_text()
+                        if link_text and len(link_text.strip()) < 50:
+                            # Take first line if multiple lines and clean duplicates
+                            first_line = link_text.strip().split('\n')[0].strip()
+                            post_data['author_name'] = first_line if first_line else "LinkedIn User"
                         else:
                             post_data['author_name'] = "LinkedIn User"
                     else:
                         post_data['author_name'] = "LinkedIn User"
-            except:
+            except Exception as e:
+                print(f"⚠️ Error extracting author: {str(e)}")
                 post_data['author_name'] = "LinkedIn User"
             
-            # Post content
+            # Post content - updated selectors
             try:
                 content_element = await container.query_selector(
-                    '.feed-shared-text, .feed-shared-update-v2__description, .update-components-text'
+                    '.feed-shared-text, .feed-shared-update-v2__description, .update-components-text, .feed-shared-text__text-view'
                 )
                 if content_element:
-                    post_data['content'] = await content_element.inner_text()
+                    post_data['content'] = (await content_element.inner_text()).strip()
                 else:
-                    post_data['content'] = ""
-            except:
+                    # Try to get any text content from the container
+                    post_data['content'] = (await container.inner_text()).strip()
+            except Exception as e:
+                print(f"⚠️ Error extracting content: {str(e)}")
                 post_data['content'] = ""
             
             # Skip if no meaningful content
