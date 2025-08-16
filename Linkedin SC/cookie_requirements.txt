@@ -1,0 +1,8 @@
+# Additional requirements for cookie implementation
+schedule>=1.2.0
+# The existing requirements.txt already includes:
+# playwright>=1.40.0
+# pandas>=1.5.0
+# aiohttp>=3.8.0
+# python-dotenv>=1.0.0
+# asyncio-throttle>=1.0.0

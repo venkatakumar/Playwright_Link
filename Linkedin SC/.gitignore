@@ -85,3 +85,19 @@ scraper.log
 ../JavaSelenium4/
 ../copilot-git/
 ../Playwright_Link_Clean/
+
+# LinkedIn Scraper - Sensitive Files
+linkedin_cookies.json
+demo_linkedin_cookies.json
+scheduler_config.json
+email_config.json
+google_credentials.json
+
+# LinkedIn Scraper - Log Files
+*.log
+daily_scraping_log.csv
+notifications.log
+
+# LinkedIn Scraper - Output Files
+output/
+scheduled_results/
