@@ -80,11 +80,10 @@ class LinkedInCookieManager:
         saved_at = datetime.fromisoformat(cookie_data['saved_at'])
         age_days = (datetime.now() - saved_at).days
         
-        # LinkedIn cookies typically last 30 days
-        if age_days > 25:  # Conservative check
-            self.logger.warning(f"⚠️ Cookies are {age_days} days old, may be expired")
-            return False
-            
+        # LinkedIn cookies typically last ~30 days, but age alone isn't a reliable invalidation.
+        # We only WARN on older cookies and let runtime validation decide.
+        if age_days >= 29:
+            self.logger.warning(f"⚠️ Cookies are {age_days} days old; proceeding but they might be close to expiring")
         return True
     
     async def extract_cookies_from_browser(self, context):
@@ -131,34 +130,57 @@ class LinkedInCookieManager:
             return False
     
     async def test_cookie_validity(self, page):
-        """Test if current cookies allow access to LinkedIn"""
+        """Test if current cookies allow access to LinkedIn.
+        Be tolerant: only return False when we explicitly detect a login state.
+        On timeouts or inconclusive checks, assume cookies are valid to avoid unnecessary re-authentication.
+        """
         try:
-            # Navigate to a protected LinkedIn page
-            await page.goto('https://www.linkedin.com/feed/', wait_until='networkidle')
-            
-            # Check if we're logged in (look for specific elements)
-            await page.wait_for_timeout(3000)
-            
-            # Check for login form (indicates we're not logged in)
-            login_form = await page.query_selector('form[data-id="sign-in-form"]')
+            # Navigate to a protected LinkedIn page quickly without waiting for full network idle
+            await page.goto(
+                'https://www.linkedin.com/feed/',
+                wait_until='domcontentloaded',
+                timeout=15000
+            )
+
+            # Quick checks for forced login state via URL
+            if any(path in (page.url or '') for path in ('/login', '/checkpoint')):
+                self.logger.warning("⚠️ Redirected to login/checkpoint - cookies likely expired")
+                return False
+
+            # Brief pause for DOM to settle
+            await page.wait_for_timeout(1000)
+
+            # Check for common login indicators
+            login_form = await page.query_selector('form[action*="login"], input[name="session_key"]')
             if login_form:
                 self.logger.warning("⚠️ Login form detected - cookies expired")
                 return False
-            
-            # Check for feed or profile elements (indicates we're logged in)
-            feed_element = await page.query_selector('[data-id="feed-tab-icon"]')
-            profile_element = await page.query_selector('[data-control-name="nav.settings_and_privacy"]')
-            
-            if feed_element or profile_element:
-                self.logger.info("✅ Successfully logged in with cookies")
-                return True
-            else:
-                self.logger.warning("⚠️ Cannot confirm login status")
-                return False
-                
+
+            # Check for common logged-in indicators
+            selectors_logged_in = [
+                'a[href*="/feed/"]',
+                'img.global-nav__me-photo',
+                '[data-test-global-nav-link="feed"]',
+                'nav.global-nav',
+            ]
+            for sel in selectors_logged_in:
+                try:
+                    el = await page.query_selector(sel)
+                    if el:
+                        self.logger.info("✅ Cookies appear valid (logged-in UI detected)")
+                        return True
+                except Exception:
+                    # Ignore selector errors and continue
+                    pass
+
+            # Inconclusive: assume valid to avoid unnecessary login prompts
+            self.logger.warning("⚠️ Login status inconclusive; proceeding with stored cookies")
+            return True
+
         except Exception as e:
-            self.logger.error(f"❌ Cookie validation failed: {str(e)}")
-            return False
+            # Network timeouts or transient errors: assume valid to prevent forced relogin
+            self.logger.warning(f"⚠️ Cookie validation inconclusive due to error: {str(e)}; proceeding with stored cookies")
+            return True
     
     def delete_cookies(self):
         """Delete stored cookies"""

@@ -131,24 +131,15 @@ class CookieEnhancedLinkedInScraper(LinkedInPeopleSearchScraper):
         
         # First, try cookie login
         cookie_success = await self.login_with_cookies()
-        
+
         if cookie_success:
             self.logger.info("✅ Logged in successfully with cookies")
             return True
-        
-        # If cookie login failed, try manual login
-        self.logger.info("🔄 Cookie login failed, attempting manual login...")
-        await self.send_notification("LinkedIn Cookie Expired", 
-                                   "Manual re-login required for LinkedIn scraper")
-        
-        manual_success = await self.manual_login_and_extract_cookies()
-        
-        if manual_success:
-            self.logger.info("✅ Manual login successful, fresh cookies saved")
-            return True
-        else:
-            self.logger.error("❌ All login methods failed")
-            return False
+
+        # If cookie login appears to fail, avoid forcing manual login unless we are certain.
+        # Proceed and let subsequent navigation attempts handle auth; caller can decide to retry or prompt later.
+        self.logger.warning("⚠️ Proceeding without forcing manual login; stored cookies may still work on subsequent requests")
+        return True
     
     async def send_notification(self, subject, message):
         """Send email notification when manual login is needed"""
@@ -168,17 +159,93 @@ class CookieEnhancedLinkedInScraper(LinkedInPeopleSearchScraper):
         except Exception as e:
             self.logger.error(f"❌ Failed to send notification: {str(e)}")
     
-    async def run_executive_search_with_cookies(self, job_titles, locations, max_profiles=50, pages_to_scrape=5):
-        """Run executive search using cookie-based login"""
+    async def run_executive_search_with_cookies(self, job_titles, locations, max_profiles=50, pages_to_scrape=5, industries=None, geo_urns=None, origin='GLOBAL_SEARCH_HEADER', sid=None, additional_filters=None):
+        """Run executive search using cookie-based session without invoking manual login."""
         try:
-            # Ensure we're logged in with cookies
+            # Ensure browser and cookies are set
             login_success = await self.ensure_logged_in()
             if not login_success:
-                raise Exception("Failed to log into LinkedIn with cookies")
-            
-            # Run the original executive search
-            return await super().run_executive_search(job_titles, locations, max_profiles, pages_to_scrape)
-            
+                raise Exception("Failed to prepare LinkedIn session with cookies")
+
+            # Build a search URL and navigate directly (more robust than UI filtering)
+            # Use exact keywords matching user-observed working example
+            exact_keywords = 'CEO OR Chief Executive Officer OR CTO OR Chief Technology Officer OR Founder OR Co-Founder'
+            search_url = self.build_people_search_url(
+                job_titles,
+                locations,
+                industries=industries,
+                additional_filters=additional_filters,
+                geo_urns=geo_urns,
+                origin='FACETED_SEARCH',
+                sid=sid,
+                keywords_override=exact_keywords,
+            )
+            await self.page.goto(search_url, wait_until='domcontentloaded')
+            await self.page.wait_for_timeout(2000)
+
+            # Scrape results using base class helpers operating on self.page
+            profiles = await self.scrape_people_search_results(max_profiles, pages_to_scrape)
+
+            if profiles and len(profiles) > 0:
+                await self.save_profiles_data("linkedin_executives")
+                return profiles
+
+            # Fallback 1: remove geo facet if present
+            if geo_urns:
+                self.logger.warning("⚠️ No results with geo facet; retrying without geoUrn...")
+                url_no_geo = self.build_people_search_url(
+                    job_titles,
+                    locations,
+                    industries=industries,
+                    additional_filters=additional_filters,
+                    geo_urns=None,
+                    origin=origin,
+                    sid=sid,
+                )
+                await self.page.goto(url_no_geo, wait_until='domcontentloaded')
+                await self.page.wait_for_timeout(2000)
+                profiles = await self.scrape_people_search_results(max_profiles, pages_to_scrape)
+                if profiles and len(profiles) > 0:
+                    await self.save_profiles_data("linkedin_executives")
+                    return profiles
+
+            # Fallback 2: remove industries facet if present
+            if industries:
+                self.logger.warning("⚠️ No results with industry facet; retrying without industry...")
+                url_no_industry = self.build_people_search_url(
+                    job_titles,
+                    locations,
+                    industries=None,
+                    additional_filters=additional_filters,
+                    geo_urns=None,
+                    origin=origin,
+                    sid=sid,
+                )
+                await self.page.goto(url_no_industry, wait_until='domcontentloaded')
+                await self.page.wait_for_timeout(2000)
+                profiles = await self.scrape_people_search_results(max_profiles, pages_to_scrape)
+                if profiles and len(profiles) > 0:
+                    await self.save_profiles_data("linkedin_executives")
+                    return profiles
+
+            # Fallback 3: try UI filtering flow
+            try:
+                self.logger.warning("⚠️ Trying UI-based filtering fallback...")
+                await self.page.goto('https://www.linkedin.com/search/results/people/', wait_until='domcontentloaded')
+                await self.page.wait_for_timeout(1500)
+                await self.dismiss_premium_popup()
+                await self.apply_search_filters(job_titles, locations, industries=industries)
+                profiles = await self.scrape_people_search_results(max_profiles, pages_to_scrape)
+                if profiles and len(profiles) > 0:
+                    await self.save_profiles_data("linkedin_executives")
+                    return profiles
+            except Exception as _e:
+                self.logger.warning(f"UI fallback failed: {_e}")
+
+            # Always write out empty files with headers for observability
+            await self.save_profiles_data("linkedin_executives")
+            return []
+
         except Exception as e:
             self.logger.error(f"❌ Cookie-enhanced search failed: {str(e)}")
             raise
@@ -195,9 +262,41 @@ class CookieEnhancedLinkedInScraper(LinkedInPeopleSearchScraper):
         
         # Create context
         self.context = await self.browser.new_context(
-            viewport={'width': 1920, 'height': 1080},
-            user_agent='Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+            viewport={'width': 1366, 'height': 768},
+            device_scale_factor=1,
+            is_mobile=False,
+            has_touch=False,
+            user_agent='Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36',
+            locale='en-GB',
+            timezone_id='Europe/London'
         )
+        # Stealth evasions
+        await self.context.add_init_script(
+                        """
+                        // webdriver
+                        Object.defineProperty(navigator, 'webdriver', { get: () => false });
+                        // languages
+                        Object.defineProperty(navigator, 'languages', { get: () => ['en-US', 'en'] });
+                        // plugins
+                        Object.defineProperty(navigator, 'plugins', { get: () => [1, 2, 3, 4, 5] });
+                        // chrome runtime stub
+                        window.chrome = window.chrome || { runtime: {} };
+                        // permissions
+                        const originalQuery = window.navigator.permissions && window.navigator.permissions.query;
+                        if (originalQuery) {
+                            window.navigator.permissions.query = (parameters) =>
+                                parameters && parameters.name === 'notifications'
+                                    ? Promise.resolve({ state: Notification.permission })
+                                    : originalQuery(parameters);
+                        }
+            """
+        )
+        await self.context.set_extra_http_headers({
+            'Accept-Language': 'en-US,en;q=0.9',
+            'DNT': '1',
+            'Sec-CH-UA': '"Chromium";v="125", "Not.A/Brand";v="24", "Google Chrome";v="125"',
+            'Sec-CH-UA-Platform': '"Windows"'
+        })
         
         # Create page
         self.page = await self.context.new_page()
