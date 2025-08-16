@@ -9,6 +9,8 @@ Includes automatic retry workflow and notification system
 import asyncio
 import json
 import smtplib
+import os
+import random
 from datetime import datetime
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
@@ -159,7 +161,39 @@ class CookieEnhancedLinkedInScraper(LinkedInPeopleSearchScraper):
         except Exception as e:
             self.logger.error(f"❌ Failed to send notification: {str(e)}")
     
-    async def run_executive_search_with_cookies(self, job_titles, locations, max_profiles=50, pages_to_scrape=5, industries=None, geo_urns=None, origin='GLOBAL_SEARCH_HEADER', sid=None, additional_filters=None):
+    async def enrich_profiles_to_csv(self, profiles, csv_path: str, limit: int = 0) -> int:
+        """Visit profile pages gently with delays and append detailed rows to CSV.
+
+        Returns the number of enriched profiles written.
+        """
+        try:
+            os.makedirs(os.path.dirname(csv_path) or '.', exist_ok=True)
+        except Exception:
+            pass
+
+        enriched = 0
+        for idx, p in enumerate(profiles):
+            if limit and enriched >= limit:
+                break
+            url = p.get('profile_url') or p.get('url')
+            if not url:
+                continue
+
+            # Small human-like delay with jitter before each visit
+            await asyncio.sleep(random.uniform(0.8, 1.8))
+            # Occasional slightly longer pause
+            if enriched and enriched % 5 == 0:
+                await asyncio.sleep(random.uniform(2.5, 4.0))
+
+            try:
+                details = await self.scrape_profile_details(url, base_profile=p)
+                self.append_profile_to_csv(csv_path, details)
+                enriched += 1
+            except Exception as _e:
+                self.logger.warning(f"Enrichment failed for {url}: {_e}")
+        return enriched
+
+    async def run_executive_search_with_cookies(self, job_titles, locations, max_profiles=50, pages_to_scrape=5, industries=None, geo_urns=None, origin='GLOBAL_SEARCH_HEADER', sid=None, additional_filters=None, enrich_profiles: bool = False, enrich_csv_path: str = 'output/enriched_profiles.csv', enrich_limit: int = 0):
         """Run executive search using cookie-based session without invoking manual login."""
         try:
             # Ensure browser and cookies are set
@@ -188,6 +222,9 @@ class CookieEnhancedLinkedInScraper(LinkedInPeopleSearchScraper):
 
             if profiles and len(profiles) > 0:
                 await self.save_profiles_data("linkedin_executives")
+                if enrich_profiles:
+                    written = await self.enrich_profiles_to_csv(profiles, enrich_csv_path, enrich_limit)
+                    self.logger.info(f"🪄 Enriched {written} profiles to {enrich_csv_path}")
                 return profiles
 
             # Fallback 1: remove geo facet if present
@@ -207,6 +244,9 @@ class CookieEnhancedLinkedInScraper(LinkedInPeopleSearchScraper):
                 profiles = await self.scrape_people_search_results(max_profiles, pages_to_scrape)
                 if profiles and len(profiles) > 0:
                     await self.save_profiles_data("linkedin_executives")
+                    if enrich_profiles:
+                        written = await self.enrich_profiles_to_csv(profiles, enrich_csv_path, enrich_limit)
+                        self.logger.info(f"🪄 Enriched {written} profiles to {enrich_csv_path}")
                     return profiles
 
             # Fallback 2: remove industries facet if present
@@ -226,6 +266,9 @@ class CookieEnhancedLinkedInScraper(LinkedInPeopleSearchScraper):
                 profiles = await self.scrape_people_search_results(max_profiles, pages_to_scrape)
                 if profiles and len(profiles) > 0:
                     await self.save_profiles_data("linkedin_executives")
+                    if enrich_profiles:
+                        written = await self.enrich_profiles_to_csv(profiles, enrich_csv_path, enrich_limit)
+                        self.logger.info(f"🪄 Enriched {written} profiles to {enrich_csv_path}")
                     return profiles
 
             # Fallback 3: try UI filtering flow
@@ -238,6 +281,9 @@ class CookieEnhancedLinkedInScraper(LinkedInPeopleSearchScraper):
                 profiles = await self.scrape_people_search_results(max_profiles, pages_to_scrape)
                 if profiles and len(profiles) > 0:
                     await self.save_profiles_data("linkedin_executives")
+                    if enrich_profiles:
+                        written = await self.enrich_profiles_to_csv(profiles, enrich_csv_path, enrich_limit)
+                        self.logger.info(f"🪄 Enriched {written} profiles to {enrich_csv_path}")
                     return profiles
             except Exception as _e:
                 self.logger.warning(f"UI fallback failed: {_e}")

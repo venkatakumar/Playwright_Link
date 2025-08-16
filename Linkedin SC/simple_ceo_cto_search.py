@@ -66,7 +66,10 @@ async def simple_ceo_cto_search():
             pages_to_scrape=2,
             industries=industries,
             geo_urns=geo_urns,
-            origin='GLOBAL_SEARCH_HEADER'
+            origin='GLOBAL_SEARCH_HEADER',
+            enrich_profiles=True,
+            enrich_csv_path='output/enriched_profiles.csv',
+            enrich_limit=50
         )
         
         if results and len(results) > 0:
@@ -89,8 +92,9 @@ async def simple_ceo_cto_search():
                     print(f"    📍 {location}")
                 print()
                 
-            print(f"📁 Full results saved to output directory")
-            print(f"🎯 Search completed successfully!")
+            print("📁 Base results saved to output directory")
+            print("✨ Enrichment enabled: appended up to 50 detailed profiles to output/enriched_profiles.csv")
+            print("🎯 Search completed successfully!")
             
         else:
             print("❌ No results found")

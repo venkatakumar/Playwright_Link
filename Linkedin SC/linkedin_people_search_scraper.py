@@ -13,8 +13,12 @@ Usage:
 """
 
 import asyncio
+import csv
+import re
+import random
+from typing import Dict, Tuple, Optional
 import pandas as pd
-from playwright.async_api import async_playwright
+from playwright.async_api import async_playwright, Page
 from dotenv import load_dotenv
 import os
 from datetime import datetime
@@ -474,6 +478,9 @@ class LinkedInPeopleSearchScraper:
                 # Deduplicate by profile_url and respect max_profiles
                 added_from_api = 0
                 for prof in parsed_from_api:
+                    # Strict role filter (CEO/CTO/Founder variants)
+                    if not self._role_matches(prof):
+                        continue
                     url = prof.get('profile_url')
                     if not url or url in self._seen_profile_urls:
                         continue
@@ -531,6 +538,9 @@ class LinkedInPeopleSearchScraper:
 
                 profile_data = await self.extract_profile_data(container)
                 if profile_data and profile_data['name'] != "Unknown":
+                    # Strict role filter (CEO/CTO/Founder variants)
+                    if not self._role_matches(profile_data):
+                        continue
                     # de-dup by URL
                     url = profile_data.get('profile_url')
                     if url and url in self._seen_profile_urls:
@@ -579,6 +589,305 @@ class LinkedInPeopleSearchScraper:
 
         print(f"\n🎉 Collected {len(self.profiles_data)} profiles total!")
         return self.profiles_data
+
+    def _role_matches(self, profile: Dict) -> bool:
+        """Return True if the profile indicates a target role in title/headline.
+
+        Checks common fields: current_role, title, headline, summary.
+        Matches variations: CEO, Chief Executive Officer, CTO, Chief Technology Officer, Founder, Co-Founder/Co Founder.
+        """
+        try:
+            fields = []
+            for key in ('current_role', 'title', 'headline', 'summary'):
+                val = profile.get(key)
+                if isinstance(val, str) and val.strip():
+                    fields.append(val)
+            if not fields:
+                return False
+            pattern = re.compile(r"\b(ceo|chief\s+executive\s+officer|cto|chief\s+technology\s+officer|founder|co[-\s]?founder)\b", re.I)
+            return any(pattern.search(t) for t in fields)
+        except Exception:
+            return False
+
+    # ---------------------
+    # Profile-level scraping
+    # ---------------------
+    async def _safe_text(self, page: Page, selector: str) -> str:
+        """Return trimmed text for selector or empty string."""
+        try:
+            el = await page.query_selector(selector)
+            if not el:
+                return ""
+            txt = await el.text_content()
+            return (txt or "").strip()
+        except Exception:
+            return ""
+
+    async def _safe_attr(self, page: Page, selector: str, name: str) -> str:
+        """Return attribute value for selector or empty string."""
+        try:
+            el = await page.query_selector(selector)
+            if not el:
+                return ""
+            val = await el.get_attribute(name)
+            return (val or "").strip()
+        except Exception:
+            return ""
+
+    async def _get_email_from_contact_info(self, page: Page) -> str:
+        """Open Contact info overlay if present and return email address (mailto)."""
+        try:
+            trigger = await page.query_selector(
+                'a[aria-label="Contact info"], a[href*="overlay/contact-info"], a[data-control-name="contact_see_more"]'
+            )
+            if trigger:
+                await trigger.click()
+                await page.wait_for_selector('div[role="dialog"]', timeout=4000)
+                email = await self._safe_attr(page, 'div[role="dialog"] a[href^="mailto:"]', 'href')
+                if email.lower().startswith('mailto:'):
+                    return email.split(':', 1)[1].strip()
+        except Exception:
+            pass
+        return ""
+
+    async def _get_email_by_regex(self, page: Page) -> str:
+        """Fallback: parse an email from page content via regex."""
+        try:
+            html = await page.content()
+            m = re.search(r"[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}", html)
+            return m.group(0) if m else ""
+        except Exception:
+            return ""
+
+    async def _get_current_role_company(self, page: Page) -> Tuple[str, str]:
+        """Infer current job title and company from headline or first Experience item."""
+        job_title, company = "", ""
+        # Headline pattern: "CTO at Example Corp"
+        headline = await self._safe_text(page, 'div.text-body-medium.break-words')
+        if ' at ' in headline:
+            left, right = headline.split(' at ', 1)
+            job_title = (left or '').strip()
+            company = (right or '').strip()
+        if job_title and company:
+            return job_title, company
+
+        # Experience section first item
+        try:
+            exp_item = await page.query_selector('section[aria-label="Experience"] li')
+            if exp_item:
+                title_el = await exp_item.query_selector('span[aria-hidden="true"], .t-bold')
+                if title_el:
+                    t = await title_el.text_content()
+                    job_title = (t or '').replace('·', ' ').strip()
+                company_el = await exp_item.query_selector('.t-14.t-normal.t-black--light, .t-14.t-normal')
+                if company_el:
+                    c = await company_el.text_content()
+                    company = (c or '').replace('·', ' ').strip()
+        except Exception:
+            pass
+        return job_title, company
+
+    async def _get_company_url_from_profile(self, page: Page) -> str:
+        """Find a company page URL referenced on the profile (first experience)."""
+        for sel in (
+            'section[aria-label="Experience"] li a[href*="/company/"]',
+            'a[href*="/company/"]',
+        ):
+            url = await self._safe_attr(page, sel, 'href')
+            if url and '/company/' in url:
+                return f"https://www.linkedin.com{url}" if url.startswith('/') else url
+        return ""
+
+    async def _human_like_scroll(self, page: Page, min_steps: int = 3, max_steps: int = 6) -> None:
+        """Perform short, jittered scrolls to coax lazy content to load."""
+        try:
+            steps = random.randint(min_steps, max_steps)
+            for _ in range(steps):
+                await page.wait_for_timeout(random.uniform(220, 480))
+                await page.evaluate(
+                    "() => { const vh = window.innerHeight; const j = Math.floor(Math.random()*140); window.scrollBy(0, Math.floor(vh*0.6)+j); }"
+                )
+            # brief settle and slight upward correction
+            await page.wait_for_timeout(random.uniform(450, 850))
+            await page.evaluate(
+                "() => { window.scrollBy(0, -Math.floor(window.innerHeight*0.3)); }"
+            )
+            await page.wait_for_timeout(random.uniform(250, 520))
+        except Exception:
+            pass
+
+    async def _scrape_company_metadata_from_company_page(self, page: Page, company_url: str) -> Tuple[str, str, str]:
+        """Open company page (in a new tab) and extract website, industry, and size."""
+        if not company_url:
+            return "", "", ""
+        ctx = page.context
+        company_page = await ctx.new_page()
+        website, industry, size = "", "", ""
+        try:
+            await company_page.goto(company_url, wait_until='domcontentloaded', timeout=15000)
+            website = await self._safe_attr(company_page, 'a[href^="http"]:has-text("Website")', 'href')
+            if not website:
+                website = await self._safe_attr(company_page, 'section a[href^="http"]', 'href')
+            industry = await self._safe_text(company_page, 'dt:has-text("Industry") + dd')
+            size = await self._safe_text(company_page, 'dt:has-text("Company size") + dd')
+        except Exception:
+            pass
+        finally:
+            try:
+                await company_page.close()
+            except Exception:
+                pass
+        return website, industry, size
+
+    async def scrape_profile_details(self, profile_url: str, base_profile: Optional[Dict] = None) -> Dict[str, str]:
+        """Scrape a single LinkedIn profile page for detailed fields.
+
+        Returns: dict with keys: name, job_title, company, profile_url, location,
+        headline, about, company_website, company_industry, company_size, email, mutual_connections
+        """
+        await self.page.goto(profile_url, wait_until='domcontentloaded', timeout=25000)
+        # Try to ensure top-card loaded
+        try:
+            await self.page.wait_for_selector('main, h1', timeout=8000)
+        except Exception:
+            pass
+        # Small settle delay and human-like scroll to hydrate lazy content
+        await self.page.wait_for_timeout(900)
+        await self._human_like_scroll(self.page)
+
+        data: Dict[str, str] = {
+            'name': '',
+            'job_title': '',
+            'company': '',
+            'profile_url': profile_url,
+            'location': '',
+            'headline': '',
+            'about': '',
+            'company_website': '',
+            'company_industry': '',
+            'company_size': '',
+            'email': '',
+            'mutual_connections': '',
+        }
+
+        # Expand any "See more" toggles we care about (About)
+        try:
+            see_more_selectors = [
+                'button[aria-label*="more about" i]',
+                'section[aria-label="About"] button[aria-label*="more" i]',
+                'section[aria-label="About"] button:has-text("See more")',
+            ]
+            for sel in see_more_selectors:
+                btn = await self.page.query_selector(sel)
+                if btn:
+                    await btn.click()
+                    await self.page.wait_for_timeout(250)
+        except Exception:
+            pass
+
+        # Name (multi-selector fallback)
+        for sel in [
+            'h1.text-heading-xlarge',
+            '.pv-text-details__left-panel h1',
+            'h1 span[aria-hidden="true"]',
+        ]:
+            data['name'] = await self._safe_text(self.page, sel)
+            if data['name']:
+                break
+
+        # Headline with fallbacks
+        for sel in [
+            'div.text-body-medium.break-words',
+            '.pv-text-details__left-panel .text-body-medium',
+            'section[aria-label="About"] ~ section div.text-body-medium',
+        ]:
+            data['headline'] = await self._safe_text(self.page, sel)
+            if data['headline']:
+                break
+
+        # Location fallbacks
+        for sel in [
+            '.pv-text-details__left-panel span.text-body-small',
+            'span.text-body-small.t-black--light.break-words',
+            'div.pv-text-details__left-panel > span',
+        ]:
+            data['location'] = await self._safe_text(self.page, sel)
+            if data['location']:
+                break
+
+        # About
+        for sel in [
+            'section[aria-label="About"] p',
+            'section[aria-label="About"] div.inline-show-more-text',
+        ]:
+            data['about'] = await self._safe_text(self.page, sel)
+            if data['about']:
+                break
+
+        # Job title + company
+        jt, co = await self._get_current_role_company(self.page)
+        data['job_title'], data['company'] = jt, co
+
+        # Email via contact info (if available)
+        data['email'] = await self._get_email_from_contact_info(self.page)
+        if not data['email']:
+            data['email'] = await self._get_email_by_regex(self.page)
+
+        # Mutual connections
+        for sel in [
+            'a[href*="connections/mutual"] span',
+            'a[data-control-name*="view_all_connections"] span',
+        ]:
+            data['mutual_connections'] = await self._safe_text(self.page, sel)
+            if data['mutual_connections']:
+                break
+
+        # Company metadata
+        comp_url = await self._get_company_url_from_profile(self.page)
+        website, industry, size = await self._scrape_company_metadata_from_company_page(self.page, comp_url)
+        data['company_website'] = website
+        data['company_industry'] = industry
+        data['company_size'] = size
+
+        # Normalize Nones -> ''
+        for k, v in list(data.items()):
+            if v is None:
+                data[k] = ''
+
+        # Merge base profile data as a fallback to fill blanks
+        if base_profile:
+            def pick(*keys):
+                for k in keys:
+                    if k in base_profile and base_profile[k]:
+                        return str(base_profile[k])
+                return ''
+
+            if not data['name']:
+                data['name'] = pick('name')
+            if not data['job_title']:
+                data['job_title'] = pick('current_role', 'title')
+            if not data['company']:
+                data['company'] = pick('company')
+            if not data['location']:
+                data['location'] = pick('location')
+            if not data['headline']:
+                data['headline'] = pick('summary', 'headline')
+        return data
+
+    @staticmethod
+    def append_profile_to_csv(csv_path: str, profile: Dict[str, str]) -> None:
+        """Append a single profile dict to CSV, creating headers if needed."""
+        fieldnames = [
+            'name','job_title','company','profile_url','location','headline','about',
+            'company_website','company_industry','company_size','email','mutual_connections'
+        ]
+        os.makedirs(os.path.dirname(csv_path) or '.', exist_ok=True)
+        exists = os.path.exists(csv_path)
+        with open(csv_path, 'a', newline='', encoding='utf-8') as f:
+            writer = csv.DictWriter(f, fieldnames=fieldnames)
+            if not exists:
+                writer.writeheader()
+            writer.writerow({k: profile.get(k, '') for k in fieldnames})
 
     def _parse_profiles_from_voyager_payload(self, payload):
         """Traverse LinkedIn voyager GraphQL payloads and extract profile-like entities.
@@ -663,6 +972,9 @@ class LinkedInPeopleSearchScraper:
         seen = set()
         uniq = []
         for r in results:
+            # Enforce role matching before including
+            if not self._role_matches(r):
+                continue
             url = r.get('profile_url')
             if url and url not in seen:
                 seen.add(url)
