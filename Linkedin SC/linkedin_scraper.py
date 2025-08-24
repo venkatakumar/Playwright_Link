@@ -17,7 +17,16 @@ from dotenv import load_dotenv
 from asyncio_throttle import Throttler
 
 # Import our enhancement utilities
-from utils import enhance_post_data
+from utils import (
+    enhance_post_data,
+    setup_logging,
+    ProxyRotator,
+    get_inner_text_first,
+    dedupe_posts,
+    clean_posts,
+)
+from cookie_manager import LinkedInCookieManager
+from email_notifications import EmailNotificationSystem
 
 # Load environment variables
 load_dotenv()
@@ -49,33 +58,45 @@ class LinkedInScraper:
         self.headless = os.getenv('HEADLESS', 'False').lower() == 'true'
         self.browser_timeout = int(os.getenv('BROWSER_TIMEOUT', 30000))
         self.login_wait_time = int(os.getenv('LOGIN_WAIT_TIME', 60))
-        self.two_factor_wait = os.getenv('TWO_FACTOR_WAIT', 'True').lower() == 'true'
-        
+    self.two_factor_wait = os.getenv('TWO_FACTOR_WAIT', 'True').lower() == 'true'
+    self.scrolls = int(os.getenv('SCROLL_ATTEMPTS', 5))
+    self.sort_by_recent = os.getenv('SORT_BY_RECENT', 'False').lower() == 'true'
+    self.enable_proxies = os.getenv('ENABLE_PROXIES', 'False').lower() == 'true'
+    self.log_level = os.getenv('LOG_LEVEL', 'INFO')
+
         # Create output directories
         Path(self.output_dir).mkdir(exist_ok=True)
         Path(os.path.join(self.output_dir, self.images_dir)).mkdir(exist_ok=True)
-        
+
         # Initialize data storage
         self.scraped_posts = []
         self.session = None
         self.throttler = Throttler(rate_limit=1, period=2)  # Rate limiting
-        
+
+        # Cookie + notifications
+        self.cookie_manager = LinkedInCookieManager()
+        self.email_notifier = EmailNotificationSystem()
+
+    # Logging and proxies
+    self.logger = setup_logging(self.log_level)
+    self.proxy_rotator = ProxyRotator()
+
         # Selectors (update these if LinkedIn changes their layout)
         self.selectors = {
             'email_input': 'input[name="session_key"]',
             'password_input': 'input[name="session_password"]',
             'login_button': 'button[type="submit"]',
             'search_box': 'input[placeholder*="Search"]',
-            'post_container': 'div[data-id]',  # Main post container
-            'post_content': '.feed-shared-text',  # Post text content
-            'author_name': '.feed-shared-actor__name',  # Author name
-            'author_title': '.feed-shared-actor__description',  # Author job title
-            'post_date': 'time',  # Post timestamp
-            'likes_count': 'button[aria-label*="reaction"]',  # Likes/reactions
-            'comments_count': 'button[aria-label*="comment"]',  # Comments
-            'post_images': '.feed-shared-image img',  # Post images
-            'load_more': 'button[aria-label*="Show more results"]',  # Load more button
-            'captcha': '.challenge-form',  # CAPTCHA detection
+            'post_container': 'div[data-id]',
+            'post_content': '.feed-shared-text',
+            'author_name': '.feed-shared-actor__name',
+            'author_title': '.feed-shared-actor__description',
+            'post_date': 'time',
+            'likes_count': 'button[aria-label*="reaction"]',
+            'comments_count': 'button[aria-label*="comment"]',
+            'post_images': '.feed-shared-image img',
+            'load_more': 'button[aria-label*="Show more results"]',
+            'captcha': '.challenge-form',
         }
 
     async def human_delay(self, min_delay: Optional[int] = None, max_delay: Optional[int] = None):
@@ -87,85 +108,32 @@ class LinkedInScraper:
 
     async def login_linkedin(self, page: Page) -> bool:
         """
-        Log into LinkedIn using credentials from environment variables
-        
-        Args:
-            page: Playwright page object
-            
-        Returns:
-            bool: True if login successful, False otherwise
+        Cookie-based login only. Uses stored cookies; if invalid or missing, send an email and stop.
         """
         try:
-            print("🔐 Navigating to LinkedIn login page...")
-            await page.goto('https://www.linkedin.com/login', wait_until='networkidle')
-            await self.human_delay()
-            
-            # Check for CAPTCHA
-            captcha_element = await page.query_selector(self.selectors['captcha'])
-            if captcha_element:
-                print("⚠️  CAPTCHA detected. Please solve it manually and press Enter to continue...")
-                input("Press Enter after solving CAPTCHA...")
-            
-            # Enter email
-            print("📧 Entering email...")
-            await page.fill(self.selectors['email_input'], self.email)
-            await self.human_delay(1, 2)
-            
-            # Enter password
-            print("🔑 Entering password...")
-            await page.fill(self.selectors['password_input'], self.password)
-            await self.human_delay(1, 2)
-            
-            # Click login button
-            print("🚀 Clicking login button...")
-            await page.click(self.selectors['login_button'])
-            
-            # Extended wait for 2FA/authenticator app
-            print("⏳ Waiting for login response (may require 2FA/authenticator app)...")
-            print("💡 If you need to use an authenticator app, please do so now...")
-            
-            # Wait longer for potential 2FA
-            await asyncio.sleep(5)  # Initial wait
-            
-            # Check multiple times over configured wait time
-            max_wait_attempts = self.login_wait_time // 5  # 5 second intervals
-            for attempt in range(max_wait_attempts):
-                current_url = page.url
-                print(f"🔍 Checking login status... (attempt {attempt + 1}/{max_wait_attempts})")
-                
-                # Check if we're redirected to the feed (successful login)
-                if 'feed' in current_url or '/in/' in current_url or 'mynetwork' in current_url:
-                    print("✅ Login successful!")
-                    return True
-                
-                # Check for 2FA challenge page
-                if 'challenge' in current_url or 'checkpoint' in current_url:
-                    print("🔐 Two-factor authentication detected.")
-                    print("📱 Please complete the 2FA verification (authenticator app, SMS, etc.)")
-                    print(f"⏰ Waiting up to {self.login_wait_time} seconds for you to complete 2FA...")
-                
-                # Check for error messages
-                error_elements = await page.query_selector_all('.form__input--error, .alert, .error')
-                if error_elements:
-                    error_text = await error_elements[0].inner_text() if error_elements else ""
-                    print(f"⚠️  Potential error detected: {error_text}")
-                
-                # Wait before next check
-                await asyncio.sleep(5)
-            
-            # Final check after extended wait
-            current_url = page.url
-            if 'feed' in current_url or '/in/' in current_url or 'mynetwork' in current_url:
-                print("✅ Login successful after extended wait!")
-                return True
-            else:
-                print(f"❌ Login failed or timed out after {self.login_wait_time} seconds.")
-                print(f"📍 Current URL: {current_url}")
-                print("💡 If you're on a 2FA page, please complete it manually and run the scraper again.")
-                return False
-                
+            print("🔐 Ensuring LinkedIn session (cookies first)...")
+            cookie_data = self.cookie_manager.load_cookies()
+            if cookie_data:
+                applied = await self.cookie_manager.apply_cookies_to_context(page.context, cookie_data)
+                if applied:
+                    valid = await self.cookie_manager.test_cookie_validity(page)
+                    if valid:
+                        print("✅ Using stored cookies for login")
+                        return True
+            # No cookies or invalid — notify and stop
+            print("⚠️ No valid cookies found. Sending email notification for manual login...")
+            try:
+                self.email_notifier.send_cookie_expiry_notification()
+            except Exception as e:
+                print(f"⚠️ Failed to send email notification: {e}")
+            print("👉 Please run: python cookie_manager.py and choose option 1 to refresh cookies.")
+            return False
         except Exception as e:
-            print(f"❌ Error during login: {str(e)}")
+            print(f"❌ Error during cookie-based login: {str(e)}")
+            try:
+                self.email_notifier.send_cookie_expiry_notification()
+            except Exception:
+                pass
             return False
 
     async def search_posts(self, page: Page, keywords: List[str]) -> bool:
@@ -182,11 +150,12 @@ class LinkedInScraper:
         try:
             # Combine keywords into search query
             search_query = ' OR '.join([f'"{keyword.strip()}"' for keyword in keywords])
-            search_url = f"https://www.linkedin.com/search/results/content/?keywords={search_query}"
+            sort_param = '&sortBy=R' if self.sort_by_recent else ''
+            search_url = f"https://www.linkedin.com/search/results/content/?keywords={search_query}{sort_param}"
             
             print(f"🔍 Searching for posts with keywords: {', '.join(keywords)}")
             await page.goto(search_url, wait_until='networkidle')
-            await self.human_delay(3, 5)
+            await self.human_delay(self.delay_min, self.delay_max)
             
             return True
             
@@ -207,14 +176,14 @@ class LinkedInScraper:
         for i in range(max_scrolls):
             # Scroll to bottom
             await page.evaluate("window.scrollTo(0, document.body.scrollHeight)")
-            await self.human_delay(2, 4)
+            await self.human_delay(self.delay_min, self.delay_max)
             
             # Check if "Show more results" button exists and click it
             try:
                 load_more_button = await page.query_selector(self.selectors['load_more'])
                 if load_more_button:
                     await load_more_button.click()
-                    await self.human_delay(3, 5)
+                    await self.human_delay(self.delay_min, self.delay_max)
                     print(f"📄 Clicked 'Show more results' button (scroll {i+1})")
                 else:
                     print(f"📄 Scrolled page {i+1}/{max_scrolls}")
@@ -249,79 +218,38 @@ class LinkedInScraper:
                 post_data = {}
                 
                 # Extract post content with multiple selectors
-                content = ""
                 content_selectors = [
                     '.feed-shared-text',
                     '.feed-shared-inline-show-more-text', 
                     '.update-components-text',
+                    '.feed-shared-update-v2__commentary',
                     '[data-test-id="main-feed-activity-card"] .feed-shared-text'
                 ]
-                
-                for selector in content_selectors:
-                    try:
-                        content_element = await post_element.query_selector(selector)
-                        if content_element:
-                            content = await content_element.inner_text()
-                            if content and len(content.strip()) > 0:
-                                break
-                    except:
-                        continue
-                
-                post_data['content'] = content.strip() if content else ""
+                post_data['content'] = await get_inner_text_first(post_element, content_selectors)
                 
                 # Extract author name with multiple selectors
                 # Extract author name with more specific selectors
-                author_name = ""
                 author_selectors = [
-                    '.feed-shared-actor__name .visually-hidden',  # LinkedIn screen reader text (most reliable)
-                    '.feed-shared-actor__name a',  # Name link
-                    '.update-components-actor__name a',  # Alternative actor name
-                    '.feed-shared-actor__name span[aria-hidden="true"]',  # Visible name span
-                    '.feed-shared-actor__name',  # Fallback
-                    '[data-test-id="post-author-name"]'  # Test ID selector
+                    '.feed-shared-actor__name .visually-hidden',
+                    '.feed-shared-actor__name a',
+                    '.update-components-actor__name a',
+                    '.feed-shared-actor__name span[aria-hidden="true"]',
+                    '.feed-shared-actor__name',
+                    '[data-test-id="post-author-name"]'
                 ]
-                
-                for selector in author_selectors:
-                    try:
-                        author_element = await post_element.query_selector(selector)
-                        if author_element:
-                            author_name = await author_element.inner_text()
-                            # Clean up the name (remove extra whitespace, "• Following", etc.)
-                            if author_name:
-                                author_name = author_name.strip()
-                                # Remove common LinkedIn suffixes
-                                author_name = author_name.replace("• Following", "").replace("• Connect", "").strip()
-                                if len(author_name) > 0 and not author_name.lower().startswith("follow"):
-                                    break
-                    except:
-                        continue
-                
-                post_data['author_name'] = author_name.strip() if author_name else ""
+                post_data['author_name'] = await get_inner_text_first(post_element, author_selectors)
                 
                 # Extract author title (job title, not follower count)
-                author_title = ""
                 title_selectors = [
                     '.feed-shared-actor__description .visually-hidden',  # Screen reader description
                     '.feed-shared-actor__description',  # Main description
                     '.update-components-actor__description',  # Alternative description
                     '.feed-shared-actor__sub-description .visually-hidden',  # Sub description screen reader
                 ]
-                
-                for selector in title_selectors:
-                    try:
-                        title_element = await post_element.query_selector(selector)
-                        if title_element:
-                            author_title = await title_element.inner_text()
-                            if author_title:
-                                author_title = author_title.strip()
-                                # Skip if it's follower count or connections
-                                if (not any(word in author_title.lower() for word in ['followers', 'connections', 'follow']) 
-                                    and len(author_title) > 0):
-                                    break
-                    except:
-                        continue
-                
-                post_data['author_title'] = author_title.strip() if author_title else ""
+                author_title = await get_inner_text_first(post_element, title_selectors)
+                if any(w in author_title.lower() for w in ['followers', 'connections']):
+                    author_title = ''
+                post_data['author_title'] = author_title
                 
                 # Extract post date with multiple selectors and formats
                 post_date = ""
@@ -499,8 +427,9 @@ class LinkedInScraper:
                 print(f"⚠️  Error parsing post {i+1}: {str(e)}")
                 continue
         
-        print(f"✅ Successfully parsed {len(posts_data)} posts")
-        return posts_data
+    posts_data = clean_posts(dedupe_posts(posts_data))
+    print(f"✅ Successfully parsed {len(posts_data)} posts")
+    return posts_data
 
     def _extract_number(self, text: str) -> int:
         """Extract number from text (e.g., '15 reactions', '1.2K likes' -> 1200)"""
@@ -631,12 +560,10 @@ class LinkedInScraper:
         """
         print("🚀 Starting LinkedIn Posts Scraper")
         print("=" * 50)
-        
-        # Validate credentials
-        if not self.email or not self.password:
-            print("❌ LinkedIn credentials not found in .env file")
-            return
-        
+
+        # Cookie-first flow (credentials not required). If cookies are invalid, you'll get an email.
+        print("🔒 Cookie-based authentication enabled. If cookies are expired, you'll receive an email to refresh them.")
+
         if not self.search_keywords or not self.search_keywords[0]:
             print("⚠️ No search keywords specified - will scrape from main feed")
             use_main_feed = True
@@ -646,21 +573,31 @@ class LinkedInScraper:
         async with async_playwright() as p:
             # Launch browser
             print(f"🌐 Launching browser (headless: {self.headless})...")
+            proxy_arg = None
+            if self.enable_proxies and self.proxy_rotator.has_proxies():
+                nxt = self.proxy_rotator.next()
+                if nxt:
+                    proxy_arg = {'server': f'http://{nxt}' if not nxt.startswith('http') else nxt}
+                    print(f"🛡️ Using proxy: {nxt}")
             browser = await p.chromium.launch(
                 headless=self.headless,
-                args=['--no-sandbox', '--disable-blink-features=AutomationControlled']
+                args=['--no-sandbox', '--disable-blink-features=AutomationControlled'],
+                proxy=proxy_arg
             )
             
             # Create context with realistic user agent
             context = await browser.new_context(
-                user_agent='Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+                user_agent='Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+                viewport={'width': 1366, 'height': 850},
+                locale='en-GB',
+                timezone_id='Europe/London'
             )
             
             page = await context.new_page()
             page.set_default_timeout(self.browser_timeout)
             
             try:
-                # Step 1: Login to LinkedIn
+                # Step 1: Ensure session via cookies
                 if not await self.login_linkedin(page):
                     return
                 
@@ -675,7 +612,7 @@ class LinkedInScraper:
                         return
                 
                 # Step 3: Scroll to load more posts
-                await self.scroll_page(page, max_scrolls=5)
+                await self.scroll_page(page, max_scrolls=self.scrolls)
                 
                 # Step 4: Parse posts data
                 posts_data = await self.parse_posts(page)

@@ -1,3 +1,27 @@
+## New and updated features
+
+- Cookie-first auth for keyword post scraper; email notification if cookies expire
+- Rotating proxy support (optional): set ENABLE_PROXIES=True and PROXY_LIST in .env
+- Anti-ban behavior: configurable delays, slow_mo, viewport/locale
+- Robust selectors: added fallbacks and utilities to try multiple selectors
+- Retries: helper for async retries with backoff
+- Data hygiene: de-duplication and cleaning before export
+- Multi-format export remains (CSV/JSON/Excel)
+- API control: basic FastAPI server in `api_server.py` to trigger runs
+- Env-driven config: HEADLESS, MIN_DELAY/MAX_DELAY, SCROLL_ATTEMPTS, LOG_LEVEL, SORT_BY_RECENT
+- Tests: basic unit tests for cleaning and dedupe in `tests/test_utils.py`
+
+## Email/phone enrichment (planning)
+
+We can integrate third-party APIs for enrichment. Popular options and rough costs:
+- Clearbit: Prospector/Enrichment (Paid; from ~$99/mo; per-record pricing applies)
+- Hunter.io: Email finder/verify (Free tier, paid from ~$49/mo; credits per month)
+- People Data Labs: Enrichment API (Usage-based; contact sales; has lower-volume self-serve)
+- Apollo.io: Enrichment (Plans from ~$49/mo; credits-based)
+- ZeroBounce: Email validation (pay-as-you-go, ~$0.008–$0.02 per verify)
+- Snov.io: Email finder/verify (Free credits; paid tiers from ~$39/mo)
+
+We’ll add pluggable providers with opt-in env config, plus a local-matching fallback (pattern-based) without external calls.
 """
 Summary of Data Extraction Improvements Made
 =============================================

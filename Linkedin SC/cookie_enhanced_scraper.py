@@ -17,8 +17,11 @@ from email.mime.multipart import MIMEMultipart
 from pathlib import Path
 from playwright.async_api import async_playwright
 import logging
+import re
 
 from cookie_manager import LinkedInCookieManager
+from engagement_actions import EngagementBot, ActionConfig
+from utils import ActionLimiter
 from linkedin_people_search_scraper import LinkedInPeopleSearchScraper
 
 class CookieEnhancedLinkedInScraper(LinkedInPeopleSearchScraper):
@@ -30,6 +33,7 @@ class CookieEnhancedLinkedInScraper(LinkedInPeopleSearchScraper):
         self.notification_email = notification_email
         self.cookie_manager = LinkedInCookieManager()
         self.logger = self._setup_logging()
+        self._playwright = None
         
     def _setup_logging(self):
         """Setup logging"""
@@ -201,6 +205,12 @@ class CookieEnhancedLinkedInScraper(LinkedInPeopleSearchScraper):
             if not login_success:
                 raise Exception("Failed to prepare LinkedIn session with cookies")
 
+            # If industries not provided, read from environment LINKEDIN_INDUSTRIES (comma/semicolon separated)
+            if not industries:
+                env_inds = os.getenv('LINKEDIN_INDUSTRIES', '').strip()
+                if env_inds:
+                    industries = [s.strip() for s in re.split(r'[;,]', env_inds) if s.strip()]
+
             # Build a search URL and navigate directly (more robust than UI filtering)
             # Use exact keywords matching user-observed working example
             exact_keywords = 'CEO OR Chief Executive Officer OR CTO OR Chief Technology Officer OR Founder OR Co-Founder'
@@ -295,10 +305,72 @@ class CookieEnhancedLinkedInScraper(LinkedInPeopleSearchScraper):
         except Exception as e:
             self.logger.error(f"❌ Cookie-enhanced search failed: {str(e)}")
             raise
+
+    async def engage_profiles(self, profiles, action: str = 'connect', limit: int = 3, message_text: str | None = None, dry_run: bool | None = None) -> dict:
+        """Engage with a list of profiles using guarded rate limits and optional dry-run.
+
+        action: 'connect' | 'follow' | 'message' | 'connect-follow'
+        limit: max actions for this run
+        message_text: used when action == 'message'
+        dry_run: overrides ACTIONS_DRY_RUN env if not None
+        """
+        if not profiles:
+            return {"attempted": 0, "succeeded": 0}
+
+        attempted = 0
+        succeeded = 0
+
+        # Configure bot and limiter
+        # Respect env-configured delays; only override dry_run/max_actions if provided
+        cfg_kwargs = {}
+        if dry_run is not None:
+            cfg_kwargs['dry_run'] = dry_run
+        if limit is not None:
+            cfg_kwargs['max_actions_per_run'] = int(limit)
+        bot = EngagementBot(self.page, ActionConfig(**cfg_kwargs) if cfg_kwargs else None)
+        limiter = ActionLimiter(max_actions=limit or 3, window_sec=3600)
+
+        # Normalize action label
+        action_key = (action or '').lower().replace('_', '-')
+
+        for p in profiles:
+            if limit and attempted >= limit:
+                break
+            url = p.get('profile_url') or p.get('url')
+            if not url:
+                continue
+            if not limiter.allow():
+                break
+            attempted += 1
+            ok = False
+            try:
+                if action_key == 'connect':
+                    ok = await bot.connect(url)
+                elif action_key == 'follow':
+                    ok = await bot.follow(url)
+                elif action_key == 'message':
+                    msg = message_text or os.getenv('DEFAULT_ENGAGE_MESSAGE', 'Hello! Great to connect.')
+                    ok = await bot.message(url, msg)
+                elif action_key in ('connect-follow', 'connectfollow', 'connect+follow'):
+                    ok = await bot.connect(url)
+                    if not ok:
+                        ok = await bot.follow(url)
+                else:
+                    self.logger.warning(f"Unknown action '{action}'; skipping")
+                    continue
+            except Exception as _e:
+                self.logger.warning(f"Engagement failed for {url}: {_e}")
+                ok = False
+            if ok:
+                succeeded += 1
+
+        self.logger.info(f"✨ Engagement summary — action={action_key}, attempted={attempted}, succeeded={succeeded}, dry_run={bot.config.dry_run}")
+        return {"attempted": attempted, "succeeded": succeeded}
     
     async def initialize_browser(self):
         """Initialize browser with cookie support"""
         playwright = await async_playwright().start()
+        self._playwright = playwright
         
         # Launch browser
         self.browser = await playwright.chromium.launch(
@@ -348,6 +420,33 @@ class CookieEnhancedLinkedInScraper(LinkedInPeopleSearchScraper):
         self.page = await self.context.new_page()
         
         self.logger.info("🌐 Browser initialized with cookie support")
+
+    async def shutdown(self):
+        """Gracefully close page, context, browser, and stop Playwright."""
+        # Close page
+        try:
+            if getattr(self, 'page', None):
+                await self.page.close()
+        except Exception:
+            pass
+        # Close context
+        try:
+            if getattr(self, 'context', None):
+                await self.context.close()
+        except Exception:
+            pass
+        # Close browser
+        try:
+            if getattr(self, 'browser', None):
+                await self.browser.close()
+        except Exception:
+            pass
+        # Stop Playwright driver
+        try:
+            if self._playwright:
+                await self._playwright.stop()
+        except Exception:
+            pass
 
 # Scheduled scraping function
 async def scheduled_linkedin_scrape():
@@ -399,11 +498,10 @@ async def scheduled_linkedin_scrape():
             f.write(f"{timestamp_str},failed,cookie_automated_scrape,0,{str(e)}\\n")
     
     finally:
-        # Close browser
+        # Close browser and stop driver
         try:
-            if hasattr(scraper, 'browser') and scraper.browser:
-                await scraper.browser.close()
-        except:
+            await scraper.shutdown()
+        except Exception:
             pass
 
 if __name__ == "__main__":
@@ -433,9 +531,8 @@ if __name__ == "__main__":
                 print("❌ Cookie login failed")
             
             try:
-                if scraper.browser:
-                    await scraper.browser.close()
-            except:
+                await scraper.shutdown()
+            except Exception:
                 pass
         
         asyncio.run(test_login())
@@ -462,9 +559,8 @@ if __name__ == "__main__":
                 print(f"❌ Search failed: {str(e)}")
             finally:
                 try:
-                    if scraper.browser:
-                        await scraper.browser.close()
-                except:
+                    await scraper.shutdown()
+                except Exception:
                     pass
         
         asyncio.run(run_search())

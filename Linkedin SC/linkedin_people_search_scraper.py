@@ -928,6 +928,14 @@ class LinkedInPeopleSearchScraper:
                 headline = node.get('headline') or node.get('primarySubtitle') or node.get('subline') or node.get('subtitle') or node.get('occupation')
                 if isinstance(headline, str):
                     current_role = headline
+                    # Heuristic: infer company from headline like "CTO at Starling Bank"
+                    if not company:
+                        try:
+                            m = re.search(r"\bat\s+(.+?)(?:\s*[|\-•–·]|$)", headline, flags=re.IGNORECASE)
+                            if m:
+                                company = m.group(1).strip()
+                        except Exception:
+                            pass
 
                 # Company not reliably separate; sometimes in headline
                 # Location
@@ -1020,8 +1028,21 @@ class LinkedInPeopleSearchScraper:
         print(f"\n📊 PROFILE COLLECTION SUMMARY:")
         print(f"Total Profiles: {len(self.profiles_data)}")
         if not df.empty:
-            print(f"Unique Companies: {df['company'].nunique()}")
-            print(f"Locations: {df['location'].nunique()}")
+            # Ignore blanks/Unknown when counting uniques
+            comp_ser = (
+                df['company']
+                .astype(str)
+                .str.strip()
+                .replace({'': pd.NA, 'Unknown': pd.NA})
+            )
+            loc_ser = (
+                df['location']
+                .astype(str)
+                .str.strip()
+                .replace({'': pd.NA, 'Unknown': pd.NA})
+            )
+            print(f"Unique Companies: {comp_ser.dropna().nunique()}")
+            print(f"Locations: {loc_ser.dropna().nunique()}")
             title_counts = df['title_category'].value_counts()
             print(f"\nTitle Distribution:")
             for title, count in title_counts.items():

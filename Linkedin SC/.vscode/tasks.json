@@ -114,5 +114,43 @@
 			],
 			"group": "build"
 		}
+		,
+		{
+			"label": "Start API Server",
+			"type": "shell",
+			"command": "python",
+			"args": [
+				"-m",
+				"uvicorn",
+				"api_server:app",
+				"--host",
+				"127.0.0.1",
+				"--port",
+				"8000"
+			],
+			"isBackground": true,
+			"group": "build",
+			"presentation": {
+				"echo": true,
+				"reveal": "always",
+				"focus": false,
+				"panel": "shared"
+			}
+		},
+		{
+			"label": "Run Feed Smoke Test",
+			"type": "shell",
+			"command": "python",
+			"args": [
+				"run_feed_with_cookies.py"
+			],
+			"group": "build",
+			"presentation": {
+				"echo": true,
+				"reveal": "always",
+				"focus": false,
+				"panel": "shared"
+			}
+		}
 	]
 }

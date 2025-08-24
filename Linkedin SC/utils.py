@@ -5,10 +5,29 @@ import re
 import os
 import asyncio
 import random
-from typing import List, Dict, Optional, Union, Tuple
+from typing import List, Dict, Optional, Union, Tuple, Callable, Any
 from datetime import datetime, timedelta
 from urllib.parse import urlparse, urljoin
 import logging
+import itertools
+import time
+
+# In-memory round-robin for proxies
+class ProxyRotator:
+    """Simple round-robin proxy rotator using PROXY_LIST env or provided list."""
+    def __init__(self, proxies: Optional[List[str]] = None) -> None:
+        env_list = os.getenv('PROXY_LIST', '')
+        parsed_env = [p.strip() for p in env_list.split(',') if p.strip()]
+        self.proxies = proxies or parsed_env
+        self._cycle = itertools.cycle(self.proxies) if self.proxies else None
+
+    def next(self) -> Optional[str]:
+        if not self._cycle:
+            return None
+        return next(self._cycle)
+
+    def has_proxies(self) -> bool:
+        return bool(self.proxies)
 
 
 def setup_logging(log_level: str = "INFO") -> logging.Logger:
@@ -30,6 +49,69 @@ def setup_logging(log_level: str = "INFO") -> logging.Logger:
         ]
     )
     return logging.getLogger(__name__)
+
+
+class ActionLimiter:
+    """Simple time-based limiter for actions per window.
+
+    Example: allow <= max_actions within window_sec. Call .allow() before acting.
+    """
+    def __init__(self, max_actions: int = 10, window_sec: float = 3600.0):
+        self.max = max_actions
+        self.window = window_sec
+        self.ts: list[float] = []
+
+    def allow(self) -> bool:
+        now = time.time()
+        # prune old
+        self.ts = [t for t in self.ts if now - t <= self.window]
+        if len(self.ts) < self.max:
+            self.ts.append(now)
+            return True
+        return False
+
+    def remaining(self) -> int:
+        now = time.time()
+        self.ts = [t for t in self.ts if now - t <= self.window]
+        return max(0, self.max - len(self.ts))
+
+async def async_retry(fn: Callable[..., Any], *args, retries: int = 3, backoff: float = 1.5, initial_delay: float = 0.5, **kwargs) -> Any:
+    """Retry an async function with exponential backoff."""
+    attempt = 0
+    delay = initial_delay
+    while True:
+        try:
+            return await fn(*args, **kwargs)
+        except Exception as e:
+            attempt += 1
+            if attempt > retries:
+                raise
+            await asyncio.sleep(delay)
+            delay *= backoff
+
+
+async def try_select_first(element, selectors: List[str]):
+    """Try multiple selectors and return the first matching element."""
+    for sel in selectors:
+        try:
+            el = await element.query_selector(sel)
+            if el:
+                return el
+        except Exception:
+            continue
+    return None
+
+
+async def get_inner_text_first(element, selectors: List[str]) -> str:
+    """Return inner_text from the first matching selector; else empty string."""
+    el = await try_select_first(element, selectors)
+    if not el:
+        return ""
+    try:
+        txt = await el.inner_text()
+        return clean_text(txt)
+    except Exception:
+        return ""
 
 
 def extract_numbers_from_text(text: str) -> int:
@@ -61,6 +143,31 @@ def extract_numbers_from_text(text: str) -> int:
     # Extract regular numbers
     numbers = re.findall(r'\d+', text)
     return int(numbers[0]) if numbers else 0
+
+
+def dedupe_posts(posts: List[Dict]) -> List[Dict]:
+    """De-duplicate posts by stable keys (post_url preferred; fallback to content+author+date)."""
+    seen = set()
+    result = []
+    for p in posts:
+        key = p.get('post_url') or f"{p.get('content','')[:80]}|{p.get('author_name','')}|{p.get('post_date','')}"
+        if key in seen:
+            continue
+        seen.add(key)
+        result.append(p)
+    return result
+
+
+def clean_posts(posts: List[Dict]) -> List[Dict]:
+    """Basic cleaning: trim strings, normalize whitespace, drop obvious empties."""
+    cleaned = []
+    for p in posts:
+        q = dict(p)
+        for k, v in list(q.items()):
+            if isinstance(v, str):
+                q[k] = clean_text(v)
+        cleaned.append(q)
+    return cleaned
 
 
 def clean_text(text: str) -> str:

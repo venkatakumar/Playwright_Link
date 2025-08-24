@@ -10,10 +10,11 @@ import asyncio
 import pandas as pd
 from playwright.async_api import async_playwright
 from dotenv import load_dotenv
+from cookie_manager import LinkedInCookieManager
 import os
 from datetime import datetime
 import json
-from utils import enhance_post_data
+from utils import enhance_post_data, ProxyRotator, setup_logging, dedupe_posts, clean_posts
 
 load_dotenv()
 
@@ -22,44 +23,83 @@ class LinkedInFeedScraper:
         self.posts_data = []
         self.browser = None
         self.page = None
+        self.context = None
+        self.cookie_manager = LinkedInCookieManager()
+        # Env-driven config
+        self.headless = os.getenv('HEADLESS', 'False').lower() == 'true'
+        self.min_delay = float(os.getenv('MIN_DELAY', '1.5'))
+        self.max_delay = float(os.getenv('MAX_DELAY', '3.5'))
+        self.scroll_attempts = int(os.getenv('SCROLL_ATTEMPTS', '10'))
+        self.enable_proxies = os.getenv('ENABLE_PROXIES', 'False').lower() == 'true'
+        self.slow_mo_ms = int(os.getenv('SLOW_MO_MS', '400'))
+        self.logger = setup_logging(os.getenv('LOG_LEVEL', 'INFO'))
+        self.proxy_rotator = ProxyRotator()
         
     async def login_linkedin(self):
-        """Login to LinkedIn with 2FA support"""
-        print("🔐 Logging into LinkedIn...")
-        
+        """Login using stored cookies if available; optionally fall back based on env flags."""
+        print("🔐 Ensuring LinkedIn session (cookies first)...")
+        cookie_only = os.getenv('COOKIE_ONLY', 'false').lower() == 'true'
+        interactive = os.getenv('INTERACTIVE_LOGIN', 'false').lower() == 'true'
+
+        # Try cookie-based login first
+        try:
+            cookie_data = self.cookie_manager.load_cookies()
+            if cookie_data and self.context:
+                applied = await self.cookie_manager.apply_cookies_to_context(self.context, cookie_data)
+                if applied:
+                    valid = await self.cookie_manager.test_cookie_validity(self.page)
+                    if valid:
+                        print("✅ Using stored cookies for login")
+                        return True
+        except Exception as e:
+            print(f"⚠️ Cookie login attempt failed: {e}")
+
+        if cookie_only:
+            print("⚠️ COOKIE_ONLY is set and no valid cookies available; skipping credential login.")
+            return False
+
+        # Fallback: credential login with optional 2FA
+        print("🔐 Falling back to credential login...")
         email = os.getenv('LINKEDIN_EMAIL')
         password = os.getenv('LINKEDIN_PASSWORD')
-        
         if not email or not password:
-            raise ValueError("Please set LINKEDIN_EMAIL and LINKEDIN_PASSWORD in .env file")
-        
+            print("⚠️ Credentials not set; cannot perform credential login.")
+            return False
+
         await self.page.goto("https://www.linkedin.com/login")
-        
-        # Fill credentials
         await self.page.fill('input[name="session_key"]', email)
         await self.page.fill('input[name="session_password"]', password)
         await self.page.click('button[type="submit"]')
-        
         await self.page.wait_for_timeout(3000)
-        
-        # Handle 2FA if needed
+
         if "checkpoint" in self.page.url or "challenge" in self.page.url:
-            print("🔐 2FA detected. Complete verification in browser, then press Enter...")
-            input()
-            await self.page.wait_for_timeout(3000)
-        
-        # Verify login
+            print("🔐 2FA detected.")
+            if interactive:
+                print("Complete verification in browser, then press Enter...")
+                try:
+                    input()
+                except Exception:
+                    pass
+                await self.page.wait_for_timeout(3000)
+            else:
+                print("⚠️ Non-interactive mode; skipping manual 2FA flow.")
+                return False
+
         await self.page.goto("https://www.linkedin.com/feed/")
         await self.page.wait_for_timeout(2000)
-        
         print("✅ Successfully logged in!")
+        return True
     
     async def scroll_and_collect_posts(self, max_posts=50, scroll_attempts=10):
         """Scroll through feed and collect posts"""
         print(f"📜 Scrolling through feed to collect up to {max_posts} posts...")
         
-        await self.page.goto("https://www.linkedin.com/feed/")
-        await self.page.wait_for_timeout(3000)
+        # Robust navigation with a quick retry
+        try:
+            await self.page.goto("https://www.linkedin.com/feed/", wait_until='domcontentloaded', timeout=20000)
+        except Exception:
+            await self.page.wait_for_timeout(1000)
+            await self.page.goto("https://www.linkedin.com/feed/", wait_until='domcontentloaded', timeout=30000)
         
         collected_posts = 0
         scroll_count = 0
@@ -85,7 +125,9 @@ class LinkedInFeedScraper:
             
             # Scroll down
             await self.page.evaluate("window.scrollTo(0, document.body.scrollHeight)")
-            await self.page.wait_for_timeout(2000)
+            # Anti-ban human-like delay
+            delay_ms = int(1000 * self.min_delay)
+            await self.page.wait_for_timeout(delay_ms)
             scroll_count += 1
             
             print(f"📜 Scroll {scroll_count}/{scroll_attempts}, Posts: {collected_posts}/{max_posts}")
@@ -321,9 +363,10 @@ class LinkedInFeedScraper:
         
         print("💾 Enhancing and saving data...")
         
-        # Enhance each post with our utility functions
+        # Clean, dedupe, and enhance each post with our utility functions
         enhanced_posts = []
-        for post in self.posts_data:
+        cleaned = clean_posts(dedupe_posts(self.posts_data))
+        for post in cleaned:
             enhanced_post = enhance_post_data(post)
             enhanced_posts.append(enhanced_post)
         
@@ -362,20 +405,24 @@ class LinkedInFeedScraper:
         
         async with async_playwright() as p:
             self.browser = await p.chromium.launch(
-                headless=False,
-                slow_mo=500,
-                args=['--no-blink-features=AutomationControlled']
+                headless=self.headless,
+                slow_mo=self.slow_mo_ms,
+                args=['--no-blink-features=AutomationControlled'],
+                proxy={ 'server': (self.proxy_rotator.next() if self.enable_proxies and self.proxy_rotator.has_proxies() else None) } if (self.enable_proxies and self.proxy_rotator.has_proxies()) else None
             )
             
             context = await self.browser.new_context(
                 user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
             )
-            
+            self.context = context
             self.page = await context.new_page()
             
             try:
                 # Login
-                await self.login_linkedin()
+                ok = await self.login_linkedin()
+                if not ok:
+                    print("⚠️ Login not established; stopping feed scrape in non-interactive mode.")
+                    return []
                 
                 # Collect posts from feed
                 posts = await self.scroll_and_collect_posts(max_posts, scroll_attempts)
@@ -384,7 +431,7 @@ class LinkedInFeedScraper:
                     # Save enhanced data
                     enhanced_posts = await self.save_data("feed_enhanced_posts")
                     
-                    print("\\n🎉 SUCCESS! Your LinkedIn feed has been scraped!")
+                    print("\n🎉 SUCCESS! Your LinkedIn feed has been scraped!")
                     print("✨ All enhancement features applied:")
                     print("   • Author name splitting (first/last)")
                     print("   • Hashtag extraction")
@@ -426,10 +473,10 @@ async def run_feed_scraper_demo():
     posts = await scraper.run_feed_scraper(max_posts, scroll_attempts)
     
     if posts:
-        print(f"\\n🎉 Successfully scraped {len(posts)} posts from your LinkedIn feed!")
+        print(f"\n🎉 Successfully scraped {len(posts)} posts from your LinkedIn feed!")
         print("📁 Check the 'output' folder for your data files")
     else:
-        print("\\n😔 No posts were collected. Try:")
+        print("\n😔 No posts were collected. Try:")
         print("1. Using LinkedIn manually first")
         print("2. Checking your internet connection") 
         print("3. Running again in a few hours")
