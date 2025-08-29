@@ -57,12 +57,13 @@ class LinkedInScraper:
         self.images_dir = os.getenv('IMAGES_DIR', 'images')
         self.headless = os.getenv('HEADLESS', 'False').lower() == 'true'
         self.browser_timeout = int(os.getenv('BROWSER_TIMEOUT', 30000))
+
         self.login_wait_time = int(os.getenv('LOGIN_WAIT_TIME', 60))
-    self.two_factor_wait = os.getenv('TWO_FACTOR_WAIT', 'True').lower() == 'true'
-    self.scrolls = int(os.getenv('SCROLL_ATTEMPTS', 5))
-    self.sort_by_recent = os.getenv('SORT_BY_RECENT', 'False').lower() == 'true'
-    self.enable_proxies = os.getenv('ENABLE_PROXIES', 'False').lower() == 'true'
-    self.log_level = os.getenv('LOG_LEVEL', 'INFO')
+        self.two_factor_wait = os.getenv('TWO_FACTOR_WAIT', 'True').lower() == 'true'
+        self.scrolls = int(os.getenv('SCROLL_ATTEMPTS', 5))
+        self.sort_by_recent = os.getenv('SORT_BY_RECENT', 'False').lower() == 'true'
+        self.enable_proxies = os.getenv('ENABLE_PROXIES', 'False').lower() == 'true'
+        self.log_level = os.getenv('LOG_LEVEL', 'INFO')
 
         # Create output directories
         Path(self.output_dir).mkdir(exist_ok=True)
@@ -77,9 +78,9 @@ class LinkedInScraper:
         self.cookie_manager = LinkedInCookieManager()
         self.email_notifier = EmailNotificationSystem()
 
-    # Logging and proxies
-    self.logger = setup_logging(self.log_level)
-    self.proxy_rotator = ProxyRotator()
+        # Logging and proxies
+        self.logger = setup_logging(self.log_level)
+        self.proxy_rotator = ProxyRotator()
 
         # Selectors (update these if LinkedIn changes their layout)
         self.selectors = {
@@ -426,10 +427,10 @@ class LinkedInScraper:
             except Exception as e:
                 print(f"⚠️  Error parsing post {i+1}: {str(e)}")
                 continue
-        
-    posts_data = clean_posts(dedupe_posts(posts_data))
-    print(f"✅ Successfully parsed {len(posts_data)} posts")
-    return posts_data
+
+        posts_data = clean_posts(dedupe_posts(posts_data))
+        print(f"✅ Successfully parsed {len(posts_data)} posts")
+        return posts_data
 
     def _extract_number(self, text: str) -> int:
         """Extract number from text (e.g., '15 reactions', '1.2K likes' -> 1200)"""
